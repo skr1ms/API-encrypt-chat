@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "Checking EncryptChat container status..."
+docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}" --filter "name=encrypt_chat"

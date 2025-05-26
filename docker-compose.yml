@@ -1,0 +1,60 @@
+services:
+  # База данных
+  postgres:
+    image: postgres:15
+    container_name: encrypt_chat_db
+    environment:
+      POSTGRES_DB: encrypt_chat
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 53849462s
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./script.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - chat_network
+  # Бэкенд приложение
+  backend:
+    build: ./backend
+    container_name: encrypt_chat_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=53849462s
+      - DB_NAME=encrypt_chat
+      - DB_SSLMODE=disable
+      - JWT_SECRET=your-super-secret-jwt-key-here-make-it-long-and-random
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+    networks:
+      - chat_network
+
+  # Фронтенд приложение
+  frontend:
+    build: ./frontend
+    container_name: encrypt_chat_frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - chat_network
+
+networks:
+  chat_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
