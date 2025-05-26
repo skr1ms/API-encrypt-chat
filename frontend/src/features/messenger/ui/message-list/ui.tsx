@@ -6,6 +6,9 @@ interface Message {
   text: string;
   isOwn: boolean;
   time: string;
+  user?: {
+    name: string;
+  };
 }
 
 interface MessageListProps {

@@ -63,20 +63,51 @@ export const LoginForm = () => {
         rsaPublicKey: rsaKeyPair.publicKey,
       });
 
+      console.log('Login response:', response);
+
+      const token = response.token;
+      const user = response.user;
+
+      console.log('Token to save:', token);
+      console.log('User data:', user);
+
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+
+      if (!user) {
+        throw new Error('No user data received from server');
+      }
+
       // Store token
-      localStorage.setItem('token', response.token);
+      localStorage.setItem('token', token);
       localStorage.setItem('ecdhPrivateKey', ecdhKeyPair.privateKey);
       localStorage.setItem('ecdsaPrivateKey', ecdsaKeyPair.privateKey);
       localStorage.setItem('rsaPrivateKey', rsaKeyPair.privateKey);
 
+      console.log('Token saved to localStorage:', localStorage.getItem('token'));
+
+      // Handle different user data formats from backend
+      const userId = typeof user === 'object' && user && 'id' in user ? String((user as any).id) : '';
+      const username = typeof user === 'object' && user && 'username' in user ? (user as any).username : '';
+      const publicKey = typeof user === 'object' && user && 'ecdsa_public_key' in user 
+        ? (user as any).ecdsa_public_key 
+        : typeof user === 'object' && user && 'publicKey' in user 
+          ? (user as any).publicKey 
+          : '';
+      
       dispatch(loginSuccess({
-        user: response.user,
+        user: {
+          id: userId,
+          username: username,
+          publicKey: publicKey,
+        },
         privateKey: ecdhKeyPair.privateKey,
         publicKey: ecdhKeyPair.publicKey,
       }));
 
       // Connect to WebSocket
-      websocketService.connect(response.token);
+      websocketService.connect(token);
 
       navigate('/messenger');
     } catch (error) {

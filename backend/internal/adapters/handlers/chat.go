@@ -224,6 +224,41 @@ func (h *ChatHandler) RemoveMember(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed successfully"})
+}
+
+func (h *ChatHandler) CreateOrGetPrivateChat(c *gin.Context) {
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	var req struct {
+		UserID   uint   `json:"user_id" binding:"required"`
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	currentUserID := user.(*entities.User).ID
+
+	// Проверяем, что пользователь не пытается создать чат с самим собой
+	if currentUserID == req.UserID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot create chat with yourself"})
+		return
+	}
+	chat, err := h.chatUseCase.CreateOrGetPrivateChat(currentUserID, req.UserID, req.Username)
+	if err != nil {
+		h.logger.Errorf("Failed to create or get private chat: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Private chat ready",
+		"data":    chat,
+	})
 }

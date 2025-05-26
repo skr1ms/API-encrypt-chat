@@ -19,8 +19,23 @@ export interface RegisterRequest {
 }
 
 export interface AuthResponse {
-  token: string;
-  user: {
+  message?: string;
+  data?: {
+    token: string;
+    expires_at: string;
+    user: {
+      id: number;
+      username: string;
+      email: string;
+      ecdsa_public_key: string;
+      rsa_public_key: string;
+      is_online: boolean;
+      created_at: string;
+    };
+  };
+  // Direct fields for backward compatibility
+  token?: string;
+  user?: {
     id: string;
     username: string;
     publicKey: string;
@@ -60,17 +75,25 @@ class ChatAPI {
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    return this.request<AuthResponse>('/auth/register', {
+    const response = await this.request<any>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    
+    // Backend returns data in format: {message: "...", data: {...}}
+    // We need to return the data field
+    return response.data || response;
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    return this.request<AuthResponse>('/auth/login', {
+    const response = await this.request<any>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    
+    // Backend returns data in format: {message: "...", data: {...}}
+    // We need to return the data field
+    return response.data || response;
   }
 
   async getChats(): Promise<any[]> {
@@ -91,7 +114,21 @@ class ChatAPI {
   async createChat(name: string, isGroup: boolean, participants: number[]): Promise<any> {
     return this.request<any>('/chats', {
       method: 'POST',
-      body: JSON.stringify({ name, isGroup, participants }),
+      body: JSON.stringify({ 
+        name, 
+        is_group: isGroup, 
+        member_ids: participants 
+      }),
+    });
+  }
+
+  async createOrGetPrivateChat(userId: number, username: string): Promise<any> {
+    return this.request<any>('/chats/private', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        user_id: userId,
+        username: username
+      }),
     });
   }
 

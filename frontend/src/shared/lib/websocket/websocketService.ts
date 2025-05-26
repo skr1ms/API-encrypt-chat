@@ -56,24 +56,42 @@ class WebSocketService {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data);
+      console.log('WebSocket message received:', data);
+      
       store.dispatch(messageReceived(data));
       
       switch (data.type) {
-        case 'message':
-          store.dispatch(addMessage(data.payload));
-          store.dispatch(updateChatLastMessage({
-            chatId: data.payload.chatId,
-            message: data.payload
-          }));
+        case 'chat':
+          // Обрабатываем сообщения чата
+          if (data.data && data.chat_id) {
+            const messageData = data.data;
+            const customEvent = new CustomEvent('newMessage', {
+              detail: {
+                id: messageData.id,
+                chatId: data.chat_id.toString(),
+                content: messageData.content,
+                senderId: messageData.sender_id?.toString(),
+                senderUsername: messageData.sender?.username || 'Пользователь',
+                timestamp: messageData.timestamp ? new Date(messageData.timestamp * 1000).toISOString() : new Date().toISOString(),
+                messageType: messageData.message_type || 'text'
+              }
+            });
+            window.dispatchEvent(customEvent);
+          }
           break;
         case 'user_status':
           // Handle user status updates
+          console.log('User status update:', data.data);
           break;
-        case 'typing':
-          // Handle typing indicators
+        case 'notification':
+          // Handle notifications
+          console.log('Notification:', data.data);
+          break;
+        case 'error':
+          console.error('WebSocket error message:', data.data);
           break;
         default:
-          console.log('Unknown message type:', data.type);
+          console.log('Unknown message type:', data.type, data);
       }
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);

@@ -72,3 +72,27 @@ func (r *userRepository) GetOnlineUsers() ([]entities.User, error) {
 	err := r.db.Where("is_online = ?", true).Find(&users).Error
 	return users, err
 }
+
+func (r *userRepository) SearchUsers(query string, excludeUserID uint, limit int) ([]entities.User, error) {
+	var users []entities.User
+
+	// Строим запрос для поиска по username или email
+	searchQuery := r.db.Where("(username ILIKE ? OR email ILIKE ?)", "%"+query+"%", "%"+query+"%")
+
+	// Исключаем текущего пользователя из результатов
+	if excludeUserID != 0 {
+		searchQuery = searchQuery.Where("id != ?", excludeUserID)
+	}
+
+	// Ограничиваем количество результатов
+	if limit > 0 {
+		searchQuery = searchQuery.Limit(limit)
+	}
+
+	// Сортируем по релевантности: сначала точные совпадения username, потом email
+	orderClause := "CASE WHEN username ILIKE '" + query + "%' THEN 1 WHEN email ILIKE '" + query + "%' THEN 2 ELSE 3 END"
+	searchQuery = searchQuery.Order(orderClause)
+
+	err := searchQuery.Find(&users).Error
+	return users, err
+}

@@ -48,6 +48,11 @@ type MessageResponse struct {
 	DecryptedContent string `json:"decrypted_content,omitempty"`
 }
 
+type PrivateChatResponse struct {
+	Chat    *entities.Chat `json:"chat"`
+	Created bool           `json:"created"`
+}
+
 func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*entities.Chat, error) {
 	// Проверяем, что создатель существует
 	creator, err := uc.userRepo.GetByID(creatorID)
@@ -86,6 +91,36 @@ func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*enti
 
 func (uc *ChatUseCase) GetUserChats(userID uint) ([]entities.Chat, error) {
 	return uc.chatRepo.GetUserChats(userID)
+}
+
+func (uc *ChatUseCase) CreateOrGetPrivateChat(userID1, userID2 uint, otherUserName string) (*PrivateChatResponse, error) {
+	// Сначала пытаемся найти существующий приватный чат
+	existingChat, err := uc.chatRepo.FindPrivateChat(userID1, userID2)
+	if err == nil {
+		// Чат найден, возвращаем его
+		return &PrivateChatResponse{
+			Chat:    existingChat,
+			Created: false,
+		}, nil
+	}
+
+	// Чат не найден, создаем новый
+	chatName := fmt.Sprintf("Chat with %s", otherUserName)
+	req := &CreateChatRequest{
+		Name:      chatName,
+		IsGroup:   false,
+		MemberIDs: []uint{userID2}, // Добавляем только второго пользователя, создатель добавится автоматически
+	}
+
+	newChat, err := uc.CreateChat(userID1, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PrivateChatResponse{
+		Chat:    newChat,
+		Created: true,
+	}, nil
 }
 
 func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageRequest, senderECDSAPrivateKey *ecdsa.PrivateKey, senderRSAPrivateKey *rsa.PrivateKey) (*entities.Message, error) {

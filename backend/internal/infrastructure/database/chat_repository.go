@@ -76,3 +76,22 @@ func (r *chatRepository) IsMember(chatID, userID uint) (bool, error) {
 		Count(&count).Error
 	return count > 0, err
 }
+
+func (r *chatRepository) FindPrivateChat(userID1, userID2 uint) (*entities.Chat, error) {
+	var chat entities.Chat
+
+	// Ищем приватный чат между двумя пользователями
+	err := r.db.
+		Preload("Creator").
+		Preload("Members").
+		Where("is_group = false").
+		Joins("JOIN chat_members cm1 ON chats.id = cm1.chat_id AND cm1.user_id = ?", userID1).
+		Joins("JOIN chat_members cm2 ON chats.id = cm2.chat_id AND cm2.user_id = ?", userID2).
+		First(&chat).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &chat, nil
+}

@@ -45,18 +45,18 @@ func main() {
 		Session:     database.NewSessionRepository(db.DB),
 		KeyExchange: database.NewKeyExchangeRepository(db.DB),
 	}
-
 	// Инициализируем use cases
 	authUseCase := usecase.NewAuthUseCase(repos.User, repos.Session, cfg.JWT.Secret)
 	chatUseCase := usecase.NewChatUseCase(repos.Chat, repos.Message, repos.User, repos.KeyExchange)
+	userUseCase := usecase.NewUserUseCase(repos.User)
 
 	// Инициализируем WebSocket hub
 	wsHub := websocket.NewHub(appLogger)
 	go wsHub.Run()
-
 	// Инициализируем handlers
 	authHandler := handlers.NewAuthHandler(authUseCase, appLogger)
 	chatHandler := handlers.NewChatHandler(chatUseCase, wsHub, appLogger)
+	userHandler := handlers.NewUserHandler(userUseCase, appLogger)
 	wsHandler := handlers.NewWebSocketHandler(wsHub, appLogger)
 
 	// Инициализируем middleware
@@ -89,18 +89,26 @@ func main() {
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/logout", authMiddleware.RequireAuth(), authHandler.Logout)
 			auth.GET("/profile", authMiddleware.RequireAuth(), authHandler.GetProfile)
-		}
-
-		// Chat routes
+		} // Chat routes
 		chats := api.Group("/chats")
 		chats.Use(authMiddleware.RequireAuth())
 		{
 			chats.POST("", chatHandler.CreateChat)
+			chats.POST("/private", chatHandler.CreateOrGetPrivateChat)
 			chats.GET("", chatHandler.GetUserChats)
 			chats.GET("/:id/messages", chatHandler.GetChatMessages)
 			chats.POST("/:id/messages", chatHandler.SendMessage)
 			chats.POST("/:id/members", chatHandler.AddMember)
 			chats.DELETE("/:id/members/:userId", chatHandler.RemoveMember)
+		}
+
+		// User routes
+		users := api.Group("/users")
+		users.Use(authMiddleware.RequireAuth())
+		{
+			users.GET("/search", userHandler.SearchUsers)
+			users.GET("/online", userHandler.GetOnlineUsers)
+			users.GET("/:id", userHandler.GetUser)
 		}
 
 		// WebSocket route
