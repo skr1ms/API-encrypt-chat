@@ -19,6 +19,7 @@ interface Chat {
   unread: number;
   online: boolean;
   isGroup?: boolean;
+  isCreator?: boolean;
 }
 
 interface MessengerSidebarProps {
@@ -28,10 +29,30 @@ interface MessengerSidebarProps {
   onShowProfile: () => void;
   onCreateChat?: (chatName: string, isGroup: boolean, participants: number[]) => Promise<any>;
   onRefreshChats?: () => Promise<void>;
+  onShowCreateGroup?: () => void;
+  onLeaveChat?: (chatId: number) => Promise<void>;
+  onDeleteChat?: (chatId: number) => Promise<void>;
+  onDeleteGroupChat?: (chatId: number) => Promise<void>;
+  currentUserId?: number | null;
+  groupUsers?: any[];
   isLoading?: boolean;
 }
 
-export const MessengerSidebar = ({ chats, selectedChat, onSelectChat, onShowProfile, onCreateChat, onRefreshChats, isLoading }: MessengerSidebarProps) => {
+export const MessengerSidebar = ({ 
+  chats, 
+  selectedChat, 
+  onSelectChat, 
+  onShowProfile, 
+  onCreateChat, 
+  onRefreshChats, 
+  onShowCreateGroup, 
+  onLeaveChat, 
+  onDeleteChat, 
+  onDeleteGroupChat, 
+  currentUserId,
+  groupUsers,
+  isLoading 
+}: MessengerSidebarProps) => {
   const [showUserSearch, setShowUserSearch] = useState(false);
   const { toast } = useToast();
 
@@ -81,15 +102,8 @@ export const MessengerSidebar = ({ chats, selectedChat, onSelectChat, onShowProf
   };
   
   const handleCreateGroup = () => {
-    // Здесь в реальном приложении должен открываться модальный диалог
-    // для создания группового чата с выбором участников
-    if (onCreateChat) {
-      const groupName = prompt('Введите название группы:');
-      if (groupName) {
-        onCreateChat(groupName, true, []).catch(error => {
-          console.error('Ошибка создания группового чата:', error);
-        });
-      }
+    if (onShowCreateGroup) {
+      onShowCreateGroup();
     }
   };
 
@@ -163,7 +177,15 @@ export const MessengerSidebar = ({ chats, selectedChat, onSelectChat, onShowProf
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <ChatList chats={chats} selectedChat={selectedChat} onSelectChat={onSelectChat} />
+            <ChatList 
+              chats={chats} 
+              selectedChat={selectedChat} 
+              onSelectChat={onSelectChat}
+              onLeaveChat={onLeaveChat}
+              onDeleteChat={onDeleteChat}
+              onDeleteGroupChat={onDeleteGroupChat}
+              currentUserId={currentUserId}
+            />
           )}
         </>
       )}

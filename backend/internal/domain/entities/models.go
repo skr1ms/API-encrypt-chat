@@ -8,17 +8,22 @@ import (
 
 // User представляет пользователя в системе
 type User struct {
-	ID             uint           `gorm:"primaryKey" json:"id"`
-	Username       string         `gorm:"unique;not null" json:"username"`
-	Email          string         `gorm:"unique;not null" json:"email"`
-	PasswordHash   string         `gorm:"not null" json:"-"`
-	ECDSAPublicKey string         `gorm:"type:text" json:"ecdsa_public_key"`
-	RSAPublicKey   string         `gorm:"type:text" json:"rsa_public_key"`
-	IsOnline       bool           `gorm:"default:false" json:"is_online"`
-	LastSeen       *time.Time     `json:"last_seen"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+	ID             uint   `gorm:"primaryKey" json:"id"`
+	Username       string `gorm:"unique;not null" json:"username"`
+	Email          string `gorm:"unique;not null" json:"email"`
+	PasswordHash   string `gorm:"not null" json:"-"`
+	ECDSAPublicKey string `gorm:"type:text" json:"ecdsa_public_key"`
+	RSAPublicKey   string `gorm:"type:text" json:"rsa_public_key"`
+	// ВНИМАНИЕ: Хранение приватных ключей на сервере небезопасно в продакшене
+	// В реальном приложении ключи должны храниться только на клиенте
+	ECDSAPrivateKey string         `gorm:"type:text" json:"-"`
+	RSAPrivateKey   string         `gorm:"type:text" json:"-"`
+	IsOnline        bool           `gorm:"default:false" json:"is_online"`
+	Role            string         `gorm:"-" json:"role,omitempty"` // Используется для представления роли пользователя в чате
+	LastSeen        *time.Time     `json:"last_seen"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // Chat представляет чат между пользователями
@@ -96,6 +101,22 @@ type Session struct {
 	ExpiresAt    time.Time `gorm:"not null" json:"expires_at"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastActivity time.Time `json:"last_activity"`
+}
+
+// Notification представляет системные уведомления для WebSocket
+type Notification struct {
+	Type    string                 `json:"type"` // "user_left", "group_deleted", "user_added", etc.
+	ChatID  uint                   `json:"chat_id"`
+	Message string                 `json:"message"`
+	Data    map[string]interface{} `json:"data,omitempty"`
+}
+
+// WebSocketMessage представляет сообщение для WebSocket
+type WebSocketMessage struct {
+	Type         string        `json:"type"` // "message", "notification", "typing", etc.
+	ChatID       uint          `json:"chat_id,omitempty"`
+	Message      *Message      `json:"message,omitempty"`
+	Notification *Notification `json:"notification,omitempty"`
 }
 
 // TableName методы для явного указания имен таблиц

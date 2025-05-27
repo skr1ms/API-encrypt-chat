@@ -1,7 +1,11 @@
 package websocket
 
 import (
+	"crypto-chat-backend/internal/crypto"
 	"crypto-chat-backend/internal/domain/entities"
+	"crypto-chat-backend/internal/domain/usecase"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -128,15 +132,94 @@ func (c *Client) handleMessage(data []byte) {
 }
 
 func (c *Client) handleChatMessage(message WSMessage) {
-	// В реальном приложении здесь должна быть обработка через use case
-	// Пока что просто пересылаем сообщение в чат
+	// Проверяем, что chat ID указан
 	if message.ChatID == 0 {
 		c.sendError("Chat ID is required")
 		return
 	}
 
+	// Извлекаем содержимое сообщения из данных
+	var chatData map[string]interface{}
+	dataBytes, err := json.Marshal(message.Data)
+	if err != nil {
+		c.sendError("Invalid message data format")
+		return
+	}
+
+	if err := json.Unmarshal(dataBytes, &chatData); err != nil {
+		c.sendError("Invalid message data format")
+		return
+	}
+
+	content, ok := chatData["content"].(string)
+	if !ok {
+		c.sendError("Message content is required")
+		return
+	}
+
+	messageType, ok := chatData["message_type"].(string)
+	if !ok {
+		messageType = "text"
+	}
+
+	// Создаем запрос для usecase
+	req := &usecase.SendMessageRequest{
+		Content:     content,
+		MessageType: messageType,
+	}
+
+	// Получаем приватные ключи пользователя из базы данных
+	var ecdsaPrivateKey *ecdsa.PrivateKey
+	var rsaPrivateKey *rsa.PrivateKey
+
+	if c.user.ECDSAPrivateKey != "" {
+		ecdsaPrivateKey, err = crypto.DeserializeECDSAPrivateKey([]byte(c.user.ECDSAPrivateKey))
+		if err != nil {
+			c.hub.logger.Errorf("Failed to deserialize ECDSA private key for user %d: %v", c.userID, err)
+			c.sendError("Failed to process cryptographic keys")
+			return
+		}
+	}
+
+	if c.user.RSAPrivateKey != "" {
+		rsaPrivateKey, err = crypto.DeserializeRSAPrivateKey([]byte(c.user.RSAPrivateKey))
+		if err != nil {
+			c.hub.logger.Errorf("Failed to deserialize RSA private key for user %d: %v", c.userID, err)
+			c.sendError("Failed to process cryptographic keys")
+			return
+		}
+	}
+	// Отправляем сообщение через chat usecase
+	sentMessage, err := c.hub.chatUseCase.SendMessage(message.ChatID, c.userID, req, ecdsaPrivateKey, rsaPrivateKey)
+	if err != nil {
+		c.hub.logger.Errorf("Failed to send message via usecase: %v", err)
+		c.sendError("Failed to send message: " + err.Error())
+		return
+	}
+
+	// Создаем WebSocket сообщение для рассылки с расшифрованным контентом
+	wsMessage := WSMessage{
+		Type:   MessageTypeChat,
+		ChatID: message.ChatID,
+		From:   c.userID,
+		Data: ChatMessage{
+			ID:             sentMessage.ID,
+			ChatID:         sentMessage.ChatID,
+			SenderID:       sentMessage.SenderID,
+			Content:        content, // Отправляем оригинальный нешифрованный контент
+			MessageType:    sentMessage.MessageType,
+			Nonce:          sentMessage.Nonce,
+			IV:             sentMessage.IV,
+			HMAC:           sentMessage.HMAC,
+			ECDSASignature: sentMessage.ECDSASignature,
+			RSASignature:   sentMessage.RSASignature,
+			Timestamp:      sentMessage.CreatedAt.Unix(),
+		},
+		Timestamp: time.Now().Unix(),
+	}
+
 	// Отправляем сообщение всем участникам чата кроме отправителя
-	c.hub.SendToChat(message.ChatID, message, c.userID)
+	c.hub.SendToChat(message.ChatID, wsMessage, c.userID)
 }
 
 func (c *Client) handleKeyExchange(message WSMessage) {

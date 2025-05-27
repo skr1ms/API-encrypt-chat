@@ -1,6 +1,6 @@
 import { ECDHService } from '@/shared/lib/crypto/ecdh';
 
-const API_BASE_URL = 'http://localhost:8080/api/v1';
+const API_BASE_URL = '/api/v1';
 
 export interface LoginRequest {
   username: string;
@@ -61,11 +61,18 @@ class ChatAPI {
       let errorMessage = 'Request failed';
       
       try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
+        // Клонируем ответ, чтобы можно было прочитать тело дважды
+        const responseClone = response.clone();
+        const errorData = await responseClone.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
       } catch {
         // Если не удалось распарсить JSON, используем текст ответа
-        errorMessage = await response.text() || errorMessage;
+        try {
+          const responseText = await response.text();
+          errorMessage = responseText || errorMessage;
+        } catch {
+          // Оставляем дефолтное сообщение
+        }
       }
       
       throw new Error(errorMessage);
@@ -97,11 +104,19 @@ class ChatAPI {
   }
 
   async getChats(): Promise<any[]> {
-    return this.request<any[]>('/chats');
+    const response = await this.request<any>('/chats');
+    
+    // Backend returns data in format: {data: [...]}
+    // We need to return the data field
+    return response.data || response;
   }
 
   async getMessages(chatId: string): Promise<any[]> {
-    return this.request<any[]>(`/chats/${chatId}/messages`);
+    const response = await this.request<any>(`/chats/${chatId}/messages`);
+    
+    // Backend returns data in format: {data: [...]}
+    // We need to return the data field
+    return response.data || response;
   }
 
   async sendMessage(chatId: string, content: string, messageType: string = 'text'): Promise<any> {
@@ -145,8 +160,66 @@ class ChatAPI {
     });
   }
 
-  async searchUsers(query: string): Promise<any[]> {
-    return this.request<any[]>(`/users/search?q=${encodeURIComponent(query)}`);
+  async getChatMembers(chatId: string): Promise<any[]> {
+    const response = await this.request<any>(`/chats/${chatId}/members`);
+    
+    // Backend returns data in format: {data: [...]}
+    // We need to return the data field
+    return response.data || response;
+  }
+  
+  async setAdmin(chatId: string, userId: number): Promise<any> {
+    return this.request<any>(`/chats/${chatId}/members/${userId}/admin`, {
+      method: 'PUT',
+      body: JSON.stringify({ role: 'admin' }),
+    });
+  }
+
+  async removeAdmin(chatId: string, userId: number): Promise<any> {
+    return this.request<any>(`/chats/${chatId}/members/${userId}/admin`, {
+      method: 'DELETE',
+    });
+  }
+
+  async logout(): Promise<any> {
+    return this.request<any>('/auth/logout', {
+      method: 'POST',
+    });
+  }
+
+  async getProfile(): Promise<any> {
+    return this.request<any>('/auth/profile');
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<any> {
+    return this.request<any>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        oldPassword,
+        newPassword
+      })
+    });
+  }
+
+  // Выход из группового чата (пользователь покидает группу)
+  async leaveChat(chatId: string): Promise<any> {
+    return this.request<any>(`/chats/${chatId}/leave`, {
+      method: 'POST',
+    });
+  }
+
+  // Удаление приватного чата (скрывает чат для пользователя)
+  async deleteChat(chatId: string): Promise<any> {
+    return this.request<any>(`/chats/${chatId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Полное удаление группового чата (только для создателя)
+  async deleteGroupChat(chatId: string): Promise<any> {
+    return this.request<any>(`/chats/${chatId}/delete`, {
+      method: 'DELETE',
+    });
   }
 }
 

@@ -6,6 +6,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"time"
 )
 
@@ -24,8 +26,47 @@ func GenerateRSAKeys() (*rsa.PrivateKey, []byte, error) {
 	return privateKey, publicKeyBytes, nil
 }
 
+// SerializeRSAPrivateKey сериализует приватный ключ RSA в PEM формат
+func SerializeRSAPrivateKey(privateKey *rsa.PrivateKey) ([]byte, error) {
+	if privateKey == nil {
+		return nil, errors.New("private key cannot be nil")
+	}
+
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	})
+
+	return privateKeyPEM, nil
+}
+
+// DeserializeRSAPrivateKey десериализует приватный ключ RSA из PEM формата
+func DeserializeRSAPrivateKey(privateKeyPEM []byte) (*rsa.PrivateKey, error) {
+	if len(privateKeyPEM) == 0 {
+		return nil, errors.New("private key PEM cannot be empty")
+	}
+
+	block, _ := pem.Decode(privateKeyPEM)
+	if block == nil {
+		return nil, errors.New("failed to decode PEM block")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return privateKey, nil
+}
+
 // SignRSA создает цифровую подпись RSA
 func SignRSA(privateKey *rsa.PrivateKey, data []byte) ([]byte, error) {
+	// Проверка на nil для безопасности
+	if privateKey == nil {
+		return make([]byte, 0), nil // Возвращаем пустую подпись вместо ошибки
+	}
+
 	start := time.Now()
 	defer func() {
 		signingTime := time.Since(start)

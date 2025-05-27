@@ -51,6 +51,11 @@ type AuthResponse struct {
 	RefreshToken string         `json:"refresh_token"`
 }
 
+type ChangePasswordRequest struct {
+	OldPassword string `json:"oldPassword" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required,min=6"`
+}
+
 func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 	// Проверяем, существует ли пользователь
 	existingUser, _ := uc.userRepo.GetByUsername(req.Username)
@@ -74,22 +79,35 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ECDSA keys: %v", err)
 	}
-
 	rsaPriv, rsaPub, err := crypto.GenerateRSAKeys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate RSA keys: %v", err)
 	}
 
+	// Сериализуем приватные ключи для сохранения в базе данных
+	// ВНИМАНИЕ: Это небезопасно в продакшене! Приватные ключи должны храниться только на клиенте
+	ecdsaPrivateKeyPEM, err := crypto.SerializeECDSAPrivateKey(ecdsaPriv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize ECDSA private key: %v", err)
+	}
+
+	rsaPrivateKeyPEM, err := crypto.SerializeRSAPrivateKey(rsaPriv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize RSA private key: %v", err)
+	}
+
 	// Создаем пользователя
 	user := &entities.User{
-		Username:       req.Username,
-		Email:          req.Email,
-		PasswordHash:   string(hashedPassword),
-		ECDSAPublicKey: hex.EncodeToString(ecdsaPub),
-		RSAPublicKey:   hex.EncodeToString(rsaPub),
-		IsOnline:       false,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		Username:        req.Username,
+		Email:           req.Email,
+		PasswordHash:    string(hashedPassword),
+		ECDSAPublicKey:  hex.EncodeToString(ecdsaPub),
+		RSAPublicKey:    hex.EncodeToString(rsaPub),
+		ECDSAPrivateKey: string(ecdsaPrivateKeyPEM), // НЕБЕЗОПАСНО в продакшене!
+		RSAPrivateKey:   string(rsaPrivateKeyPEM),   // НЕБЕЗОПАСНО в продакшене!
+		IsOnline:        false,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	if err := uc.userRepo.Create(user); err != nil {
@@ -236,4 +254,35 @@ func (uc *AuthUseCase) generateJWT(userID uint) (string, time.Time, error) {
 	}
 
 	return tokenString, expiresAt, nil
+}
+
+func (uc *AuthUseCase) ChangePassword(userID uint, req *ChangePasswordRequest) error {
+	// Получаем пользователя
+	user, err := uc.userRepo.GetByID(userID)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	// Проверяем текущий пароль
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
+		return errors.New("invalid current password")
+	}
+
+	// Проверяем, что новый пароль отличается от старого
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.NewPassword)); err == nil {
+		return errors.New("new password must be different from current password")
+	}
+
+	// Хэшируем новый пароль
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %v", err)
+	}
+
+	// Обновляем пароль в базе данных
+	if err := uc.userRepo.UpdatePassword(userID, string(hashedPassword)); err != nil {
+		return fmt.Errorf("failed to update password: %v", err)
+	}
+
+	return nil
 }

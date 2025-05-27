@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8080/api/v1';
+const API_BASE_URL = '/api/v1';
 
 export interface User {
   id: number;
@@ -23,7 +23,9 @@ export interface OnlineUsersResponse {
 
 class UserAPI {  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = localStorage.getItem('token');
-    console.log('Making request to:', endpoint, 'with token:', token ? `${token.substring(0, 20)}...` : 'no token');
+    console.log('UserAPI making request to:', endpoint);
+    console.log('UserAPI token exists:', !!token);
+    console.log('UserAPI token preview:', token ? `${token.substring(0, 20)}...` : 'no token');
     
     const config: RequestInit = {
       headers: {
@@ -34,7 +36,12 @@ class UserAPI {  private async request<T>(endpoint: string, options: RequestInit
       ...options,
     };
 
+    console.log('UserAPI request headers:', config.headers);
+
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    
+    console.log('UserAPI response status:', response.status);
+    console.log('UserAPI response ok:', response.ok);
     
     if (!response.ok) {
       let errorMessage = 'Request failed';
@@ -42,6 +49,7 @@ class UserAPI {  private async request<T>(endpoint: string, options: RequestInit
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorMessage;
+        console.log('UserAPI error data:', errorData);
       } catch {
         // Ignore JSON parsing errors
       }
@@ -51,13 +59,16 @@ class UserAPI {  private async request<T>(endpoint: string, options: RequestInit
         // Clear invalid token
         localStorage.removeItem('token');
         errorMessage = 'Authentication required. Please login again.';
+        console.log('UserAPI: 401 error, token cleared from localStorage');
       }
       
-      console.error('Request failed:', response.status, errorMessage);
+      console.error('UserAPI request failed:', response.status, errorMessage);
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    const responseData = await response.json();
+    console.log('UserAPI response data:', responseData);
+    return responseData;
   }
 
   async searchUsers(query: string, limit: number = 10): Promise<SearchUsersResponse> {

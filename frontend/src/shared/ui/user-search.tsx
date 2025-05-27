@@ -87,9 +87,8 @@ export const UserSearch: React.FC<UserSearchProps> = ({
       </div>
 
       {/* Results dropdown */}
-      {(users.length > 0 || error) && (
-        <Card className="absolute top-full mt-1 w-full z-50 shadow-lg border">
-          <CardContent className="p-0 max-h-64 overflow-y-auto">
+      {(users.length > 0 || error) && (        <Card className="absolute top-full mt-1 w-full z-50 shadow-lg border">
+          <CardContent className="p-0 max-h-64 overflow-y-auto telegram-scrollbar">
             {error && (
               <div className="p-4 text-red-600 text-sm">
                 {error}

@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"crypto-chat-backend/internal/domain/entities"
+	"crypto-chat-backend/internal/domain/usecase"
 	"crypto-chat-backend/pkg/logger"
 	"encoding/json"
 	"net/http"
@@ -19,12 +20,13 @@ var upgrader = websocket.Upgrader{
 }
 
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	logger     *logger.Logger
-	mu         sync.RWMutex
+	clients     map[*Client]bool
+	broadcast   chan []byte
+	register    chan *Client
+	unregister  chan *Client
+	logger      *logger.Logger
+	chatUseCase *usecase.ChatUseCase
+	mu          sync.RWMutex
 }
 
 type Client struct {
@@ -74,14 +76,21 @@ type UserStatusMessage struct {
 	IsOnline bool   `json:"is_online"`
 }
 
-func NewHub(logger *logger.Logger) *Hub {
+func NewHub(logger *logger.Logger, chatUseCase *usecase.ChatUseCase) *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		logger:     logger,
+		clients:     make(map[*Client]bool),
+		broadcast:   make(chan []byte),
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		logger:      logger,
+		chatUseCase: chatUseCase,
 	}
+}
+
+// SetChatUseCase устанавливает chatUseCase после создания Hub
+// Это нужно для разрешения циклической зависимости между Hub и ChatUseCase
+func (h *Hub) SetChatUseCase(chatUseCase *usecase.ChatUseCase) {
+	h.chatUseCase = chatUseCase
 }
 
 func (h *Hub) Run() {
@@ -213,6 +222,50 @@ func (h *Hub) GetOnlineUsers() []uint {
 	}
 
 	return userIDs
+}
+
+func (h *Hub) SendNotificationToChat(chatID uint, notification *entities.Notification) {
+	// Для отправки уведомлений всем пользователям чата нам не обязательно
+	// запрашивать всю информацию о чате, достаточно получить список участников
+
+	// Используем системный userID (0) для получения списка участников
+	// Это безопасно, так как для системных сообщений мы хотим получить всех участников
+	members, err := h.chatUseCase.GetChatMembers(chatID, 0)
+	if err != nil {
+		h.logger.Errorf("Failed to get chat members for notification: %v", err)
+		return
+	}
+
+	// Создаем WebSocket сообщение
+	wsMsg := entities.WebSocketMessage{
+		Type:         "notification",
+		ChatID:       chatID,
+		Notification: notification,
+	}
+
+	data, err := json.Marshal(wsMsg)
+	if err != nil {
+		h.logger.Errorf("Failed to marshal notification: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// Отправляем уведомление всем онлайн участникам чата
+	for client := range h.clients {
+		for _, member := range members {
+			if client.userID == member.ID {
+				select {
+				case client.send <- data:
+				default:
+					close(client.send)
+					delete(h.clients, client)
+				}
+				break
+			}
+		}
+	}
 }
 
 func getTimestamp() int64 {

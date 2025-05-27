@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
 import { Users } from 'lucide-react';
+import { ChatSidebarMenu } from '@/widgets/messenger/chat-sidebar-menu';
 
 interface Chat {
   id: number;
@@ -12,25 +13,40 @@ interface Chat {
   unread: number;
   online: boolean;
   isGroup?: boolean;
+  isCreator?: boolean;
 }
 
 interface ChatListProps {
   chats: Chat[];
   selectedChat: number | null;
   onSelectChat: (id: number) => void;
+  onLeaveChat?: (chatId: number) => Promise<void>;
+  onDeleteChat?: (chatId: number) => Promise<void>;
+  onDeleteGroupChat?: (chatId: number) => Promise<void>;
+  currentUserId?: number | null;
 }
 
-export const ChatList = ({ chats, selectedChat, onSelectChat }: ChatListProps) => {
+export const ChatList = ({ chats, selectedChat, onSelectChat, onLeaveChat, onDeleteChat, onDeleteGroupChat, currentUserId }: ChatListProps) => {
+  console.log('ChatList rendered with chats:', chats);
+  console.log('ChatList chats length:', chats.length);
+  
   return (
-    <div className="flex-1 overflow-y-auto">
-      {chats.map((chat) => (
-        <div
-          key={chat.id}
-          onClick={() => onSelectChat(chat.id)}
-          className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 ${
-            selectedChat === chat.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-          }`}
-        >
+    <div className="flex-1 overflow-y-auto telegram-scrollbar">
+      {chats.length === 0 ? (
+        <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+          <p>Нет чатов</p>
+        </div>
+      ) : (
+        chats.map((chat) => {
+          console.log('Rendering chat:', chat);
+          return (
+            <div
+              key={chat.id}
+              className={`group relative p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 ${
+                selectedChat === chat.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+              }`}
+              onClick={() => onSelectChat(chat.id)}
+            >
           <div className="flex items-center space-x-3">
             <div className="relative">
               <Avatar className="h-10 w-10">
@@ -47,9 +63,21 @@ export const ChatList = ({ chats, selectedChat, onSelectChat }: ChatListProps) =
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {chat.name}
                 </p>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {chat.time}
-                </span>
+                <div className="flex items-center space-x-1">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {chat.time}
+                  </span>
+                  {/* Кнопка меню с тремя точками */}
+                  <ChatSidebarMenu
+                    chatId={chat.id}
+                    chatName={chat.name}
+                    isGroup={chat.isGroup || false}
+                    isCreator={chat.isCreator || false}
+                    onLeaveChat={onLeaveChat ? () => onLeaveChat(chat.id) : undefined}
+                    onDeleteChat={onDeleteChat ? () => onDeleteChat(chat.id) : undefined}
+                    onDeleteGroupChat={onDeleteGroupChat ? () => onDeleteGroupChat(chat.id) : undefined}
+                  />
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
@@ -64,7 +92,9 @@ export const ChatList = ({ chats, selectedChat, onSelectChat }: ChatListProps) =
             </div>
           </div>
         </div>
-      ))}
+      );
+    })
+  )}
     </div>
   );
 };

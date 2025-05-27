@@ -87,6 +87,15 @@ export const LoginForm = () => {
 
       console.log('Token saved to localStorage:', localStorage.getItem('token'));
 
+      // Сохраняем данные пользователя в localStorage
+      if (typeof response === 'object' && response && 'data' in response && response.data) {
+        // Если данные обернуты в поле data (новый формат API)
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      } else if (typeof user === 'object' && user) {
+        // Если пользователь возвращается напрямую
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
       // Handle different user data formats from backend
       const userId = typeof user === 'object' && user && 'id' in user ? String((user as any).id) : '';
       const username = typeof user === 'object' && user && 'username' in user ? (user as any).username : '';

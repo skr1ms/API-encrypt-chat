@@ -1,14 +1,18 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Button } from '@/shared/ui/button';
 import { MessengerSidebar } from '@/widgets/messenger/sidebar';
 import { MessageList } from '@/features/messenger/ui/message-list';
 import { MessageInput } from '@/features/messenger/ui/message-input';
 import { GroupSettingsModal } from '@/widgets/messenger/group-settings-modal';
-import { MessageSquare, Users } from 'lucide-react';
+import { CreateGroupModal } from '@/widgets/messenger/create-group-modal';
+import { ChatHeaderMenu } from '@/widgets/messenger/chat-header-menu';
+import { MessageSquare, Users, X } from 'lucide-react';
 import { chatAPI } from '@/shared/api/chatApi';
 import { useToast } from '@/hooks/use-toast';
+import { ChangePasswordModal } from '../../widgets/messenger/change-password-modal';
 import { websocketService } from '@/shared/lib/websocket/websocketService';
 
 interface Chat {
@@ -19,19 +23,24 @@ interface Chat {
   unread: number;
   online: boolean;
   isGroup?: boolean;
+  isCreator?: boolean; // Добавляем поле для определения создателя
 }
 
 export const MessengerPage = () => {
+  const navigate = useNavigate();
   const [selectedChat, setSelectedChat] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  const [showProfile, setShowProfile] = useState(false);
+  const [showProfile, setShowProfile] = useState(true);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [chats, setChats] = useState<Chat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const groupUsers: any[] = [];
+  const [groupUsers, setGroupUsers] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const [messages, setMessages] = useState<any[]>([]);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
@@ -94,17 +103,98 @@ export const MessengerPage = () => {
     return { title, description };
   };
 
-  // Загрузка чатов при монтировании компонента
+  // Загрузка профиля пользователя
+  const loadUserProfile = async () => {
+    try {
+      // Всегда делаем запрос к API, чтобы получить актуальные данные пользователя
+      const profile = await chatAPI.getProfile();
+      
+      if (profile?.data) {
+        // Обновляем данные пользователя в localStorage
+        localStorage.setItem('user', JSON.stringify(profile.data));
+        setCurrentUser(profile.data);
+      } else {
+        // Если API не вернул данные, попробуем использовать данные из localStorage
+        const userDataString = localStorage.getItem('user');
+        if (userDataString) {
+          const userData = JSON.parse(userDataString);
+          setCurrentUser(userData);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки профиля:', error);
+      
+      // Если запрос не удался, используем данные из localStorage
+      const userDataString = localStorage.getItem('user');
+      if (userDataString) {
+        try {
+          const userData = JSON.parse(userDataString);
+          setCurrentUser(userData);
+        } catch (e) {
+          console.error('Ошибка при разборе данных пользователя из localStorage:', e);
+        }
+      }
+    }
+  };
+
+  // Функция выхода из системы
+  const handleLogout = async () => {
+    try {
+      await chatAPI.logout();
+      
+      // Очищаем все данные из localStorage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('ecdhPrivateKey');
+      localStorage.removeItem('ecdsaPrivateKey');
+      localStorage.removeItem('rsaPrivateKey');
+      localStorage.removeItem('lastSelectedChat');
+      
+      // Отключаемся от WebSocket
+      websocketService.disconnect();
+      
+      toast({
+        title: "Выход выполнен",
+        description: "Вы успешно вышли из системы",
+      });
+      
+      // Перенаправляем на страницу входа
+      navigate('/login');
+    } catch (error) {
+      console.error('Ошибка при выходе:', error);
+      
+      // Даже если сервер недоступен, очищаем локальные данные
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('ecdhPrivateKey');
+      localStorage.removeItem('ecdsaPrivateKey');
+      localStorage.removeItem('rsaPrivateKey');
+      localStorage.removeItem('lastSelectedChat');
+      
+      websocketService.disconnect();
+      
+      toast({
+        title: "Выход выполнен",
+        description: "Локальные данные очищены",
+      });
+      
+      navigate('/login');
+    }
+  };
+
+  // Инициализация пользователя при монтировании компонента
   useEffect(() => {
-    loadChats();
+    loadUserProfile();
     
     // Получение ID текущего пользователя из localStorage
     const userDataString = localStorage.getItem('user');
     if (userDataString) {
       try {
         const userData = JSON.parse(userDataString);
+        console.log('User data from localStorage:', userData);
         if (userData && userData.id) {
           const userId = typeof userData.id === 'string' ? parseInt(userData.id, 10) : userData.id;
+          console.log('Setting currentUserId to:', userId);
           setCurrentUserId(userId);
         }
       } catch (error) {
@@ -118,49 +208,102 @@ export const MessengerPage = () => {
       websocketService.connect(token);
     }
 
-    // Слушатель для новых сообщений
-    const handleNewMessage = (event: CustomEvent) => {
-      const message = event.detail;
-      console.log('Received new message event:', message);
+    // Обработчик для системных уведомлений из WebSocket
+    const handleChatNotification = (e: any) => {
+      const notification = e.detail;
+      console.log('Chat notification received:', notification);
       
-      // Обновляем сообщения если текущий чат совпадает
-      if (selectedChat && message.chatId === selectedChat.toString()) {
-        setMessages(prevMessages => {
-          // Проверяем, что сообщение еще не добавлено
-          const messageExists = prevMessages.some(msg => msg.id === message.id);
-          if (!messageExists) {
-            const formattedMessage = {
-              id: message.id,
-              text: message.content,
-              time: new Date(message.timestamp).toLocaleTimeString('ru-RU', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              }),
-              isOwn: currentUserId !== null && parseInt(message.senderId) === currentUserId,
-              user: {
-                name: message.senderUsername
-              }
-            };
-            return [...prevMessages, formattedMessage];
-          }
-          return prevMessages;
+      // Получаем chatId из notification
+      const chatId = notification.chatId ? Number(notification.chatId) : undefined;
+      if (!chatId) return;
+      
+      if (notification.type === 'user_left') {
+        // Пользователь покинул группу - обновляем список чатов
+        loadChats();
+        
+        // Добавляем системное сообщение в текущий чат, если это текущий открытый чат
+        if (selectedChat === chatId) {
+          addSystemMessage(chatId, notification.message || 'Пользователь покинул группу', 'user_left');
+        }
+        
+        // Показываем уведомление в любом случае
+        toast({
+          title: "Пользователь покинул группу",
+          description: notification.message,
         });
       }
+      else if (notification.type === 'group_created') {
+        // Новая группа была создана
+        loadChats();
+        
+        toast({
+          title: "Создана новая группа",
+          description: notification.message,
+        });
+      }
+      else if (notification.type === 'group_deleted') {
+        // Группа была удалена создателем
+        
+        // Показываем всплывающее уведомление
+        toast({
+          title: "Группа удалена",
+          description: notification.message,
+          variant: "destructive",
+        });
+        
+        // Если это текущий выбранный чат, добавляем сообщение и сбрасываем выбор
+        if (selectedChat === chatId) {
+          // Добавляем сообщение перед сбросом чата
+          addSystemMessage(chatId, notification.message || 'Группа была удалена', 'group_deleted');
+          
+          // Делаем небольшую задержку перед сбросом, чтобы пользователь увидел сообщение
+          setTimeout(() => {
+            setSelectedChat(null);
+            localStorage.removeItem('lastSelectedChat');
+            // Обновляем список чатов
+            loadChats();
+          }, 2000);
+        } else {
+          // Если это не текущий чат, просто обновляем список
+          loadChats();
+        }
+      }
     };
-
-    window.addEventListener('newMessage', handleNewMessage as EventListener);
-
+    
+    // Обработчик для обновления списка чатов
+    const handleRefreshChats = () => {
+      console.log('Refresh chats event received');
+      // Добавляем небольшую задержку перед обновлением чатов для обеспечения 
+      // завершения всех операций на сервере
+      setTimeout(() => {
+        loadChats();
+      }, 300);
+    };
+    
+    // Добавляем обработчики
+    window.addEventListener('chatNotification', handleChatNotification);
+    window.addEventListener('refreshChats', handleRefreshChats);
+    
     return () => {
-      window.removeEventListener('newMessage', handleNewMessage as EventListener);
       websocketService.disconnect();
+      window.removeEventListener('chatNotification', handleChatNotification);
+      window.removeEventListener('refreshChats', handleRefreshChats);
     };
-  }, [selectedChat, currentUserId]);
+  }, []);
+
+  // Загрузка чатов после установки currentUserId
+  useEffect(() => {
+    if (currentUserId !== null) {
+      loadChats();
+    }
+  }, [currentUserId]);
 
   const loadChats = async () => {
     try {
       setIsLoading(true);
+      console.log('Starting to load chats...');
       const response = await chatAPI.getChats();
-      console.log('Loaded chats:', response);
+      console.log('Raw response from API:', response);
       
       // Проверка на ответ с ошибкой
       if (response && (response as any).error) {
@@ -169,19 +312,62 @@ export const MessengerPage = () => {
       
       // Преобразуем данные с бэкенда в формат для фронтенда
       const chatsData = Array.isArray(response) ? response : (response as any)?.data || [];
-      const formattedChats: Chat[] = chatsData.map((chat: any) => ({
-        id: chat.id,
-        name: chat.name,
-        lastMessage: chat.last_message || 'Нет сообщений',
-        time: chat.updated_at ? new Date(chat.updated_at).toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }) : '',
-        unread: 0, // TODO: реализовать подсчет непрочитанных
-        online: false, // TODO: реализовать статус онлайн для приватных чатов
-        isGroup: chat.is_group
+      console.log('Processed chats data:', chatsData);
+      
+      const formattedChats: Chat[] = await Promise.all(chatsData.map(async (chat: any) => {
+        console.log('Processing chat:', chat);
+        
+        let isCreator = false;
+        
+        // Для групповых чатов загружаем информацию о участниках, чтобы определить создателя
+        if (chat.is_group && currentUserId) {
+          try {
+            const membersResponse = await chatAPI.getChatMembers(chat.id.toString());
+            const membersData = Array.isArray(membersResponse) ? membersResponse : (membersResponse as any)?.data || [];
+            
+            console.log(`Members data for chat ${chat.id}:`, membersData);
+            
+            // Проверяем, является ли текущий пользователь создателем группы
+            // Способ 1: Проверка через поле role
+            const currentUserMember = membersData.find((member: any) => 
+              (member.user_id || member.id) === currentUserId
+            );
+            isCreator = currentUserMember?.role === 'creator';
+            
+            // Способ 2: Сравниваем с created_by в чате
+            if (chat.created_by === currentUserId) {
+              isCreator = true;
+            }
+            
+            console.log(`Chat ${chat.id} - Current user is creator: ${isCreator}`);
+          } catch (error) {
+            console.error(`Ошибка загрузки участников для чата ${chat.id}:`, error);
+            // В случае ошибки проверяем поле created_by
+            if (chat.created_by === currentUserId) {
+              isCreator = true;
+              console.log(`Fallback: Chat ${chat.id} - Current user is creator based on created_by`);
+            } else {
+              isCreator = false;
+            }
+          }
+        }
+        
+        return {
+          id: chat.id,
+          name: chat.name,
+          lastMessage: chat.last_message || 'Нет сообщений',
+          time: chat.updated_at ? new Date(chat.updated_at).toLocaleTimeString('ru-RU', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }) : '',
+          unread: 0, // TODO: реализовать подсчет непрочитанных
+          online: false, // TODO: реализовать статус онлайн для приватных чатов
+          isGroup: chat.is_group,
+          isCreator: isCreator
+        };
       }));
       
+      console.log('Final formatted chats:', formattedChats);
       setChats(formattedChats);
       
       // Восстанавливаем последний выбранный чат
@@ -225,15 +411,33 @@ export const MessengerPage = () => {
       
       const chatData = response?.data || response;
       
-      // Обновляем список чатов
-      await loadChats();
-      
-      // Автоматически выбираем созданный чат
-      if (chatData?.id) {
+      // Добавляем новый чат прямо в список без полной перезагрузки
+      if (chatData) {
+        const newChat = {
+          id: chatData.id,
+          name: chatName,
+          lastMessage: 'Чат создан',
+          time: new Date().toLocaleTimeString('ru-RU', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          unread: 0,
+          online: false,
+          isGroup: isGroup,
+          isCreator: isGroup // Пользователь всегда является создателем группы, которую он только что создал
+        };
+        
+        setChats(prevChats => [newChat, ...prevChats]);
+        
+        // Автоматически выбираем созданный чат
         setSelectedChat(chatData.id);
         
         // Сохраняем ID последнего выбранного чата
         localStorage.setItem('lastSelectedChat', chatData.id.toString());
+        
+        // Вызываем событие обновления чатов для синхронизации данных
+        const refreshEvent = new CustomEvent('refreshChats');
+        window.dispatchEvent(refreshEvent);
         
         toast({
           title: "Чат создан",
@@ -268,6 +472,16 @@ export const MessengerPage = () => {
     }
   };
   
+  const handleCreateGroup = async (groupName: string, participants: number[]) => {
+    try {
+      await handleCreateChat(groupName, true, participants);
+      setShowCreateGroup(false);
+    } catch (error) {
+      console.error('Ошибка создания группы:', error);
+      // Ошибка уже обработана в handleCreateChat
+    }
+  };
+  
   const loadMessages = async (chatId: number) => {
     if (!chatId) return;
     
@@ -282,18 +496,34 @@ export const MessengerPage = () => {
       }
       
       const messagesData = Array.isArray(response) ? response : (response as any)?.data || [];
-      const formattedMessages = messagesData.map((msg: any) => ({
-        id: msg.id,
-        text: msg.content || msg.encrypted_content || "Зашифрованное сообщение",
-        time: new Date(msg.created_at).toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        isOwn: currentUserId !== null && msg.sender_id === currentUserId,
-        user: {
-          name: msg.sender?.username || "Пользователь"
-        }
-      }));
+      
+      // Сортируем сообщения по времени создания (старые -> новые)
+      const sortedMessages = messagesData.sort((a: any, b: any) => {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+      
+      const formattedMessages = sortedMessages.map((msg: any) => {
+        // Проверяем, является ли сообщение системным
+        const isSystem = msg.sender_id === 0 || msg.is_system;
+        // Если не системное, проверяем принадлежность текущему пользователю
+        const isOwn = !isSystem && currentUserId !== null && Number(msg.sender_id) === Number(currentUserId);
+        
+        console.log(`Message ${msg.id}: sender_id=${msg.sender_id}, currentUserId=${currentUserId}, isOwn=${isOwn}, isSystem=${isSystem}`);
+        
+        return {
+          id: msg.id,
+          text: msg.decrypted_content || msg.content || "Зашифрованное сообщение",
+          time: new Date(msg.created_at).toLocaleTimeString('ru-RU', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          isOwn: isOwn,
+          isSystem: isSystem,
+          user: {
+            name: isSystem ? "Система" : (msg.sender?.username || "Пользователь")
+          }
+        };
+      });
       
       setMessages(formattedMessages);
     } catch (error: any) {
@@ -334,9 +564,31 @@ export const MessengerPage = () => {
 
   const handleSendMessage = async () => {
     if (message.trim() && selectedChat) {
+      const messageToSend = message.trim();
+      
+      // Добавляем сообщение локально сразу для лучшего UX
+      const optimisticMessage = {
+        id: Date.now(),
+        text: messageToSend,
+        time: new Date().toLocaleTimeString('ru-RU', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        isOwn: true,
+        user: {
+          name: 'Вы'
+        }
+      };
+      
       try {
-        console.log('Отправка сообщения:', message);
-        const sentMessage = await chatAPI.sendMessage(selectedChat.toString(), message.trim());
+        console.log('Отправка сообщения:', messageToSend);
+        
+        setMessages(prev => [...prev, optimisticMessage]);
+        
+        // Очищаем поле ввода сразу
+        setMessage('');
+        
+        const sentMessage = await chatAPI.sendMessage(selectedChat.toString(), messageToSend);
         console.log('Сообщение отправлено:', sentMessage);
         
         // Проверка на ответ с ошибкой
@@ -344,20 +596,17 @@ export const MessengerPage = () => {
           throw new Error((sentMessage as any).error);
         }
         
-        // Обновляем список сообщений
+        // Обновляем список сообщений с сервера для получения правильного ID
         await loadMessages(selectedChat);
-        
-        // Очищаем поле ввода
-        setMessage('');
-        
-        // Показываем успешное уведомление (опционально)
-        // toast({
-        //   title: "Сообщение отправлено",
-        //   description: "Ваше сообщение успешно доставлено",
-        // });
         
       } catch (error: any) {
         console.error('Ошибка отправки сообщения:', error);
+        
+        // Удаляем оптимистичное сообщение в случае ошибки
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        
+        // Восстанавливаем текст в поле ввода
+        setMessage(messageToSend);
         
         // Используем общую функцию форматирования ошибок с кастомизацией
         let { title, description } = formatError(error, "Ошибка отправки", "Не удалось отправить сообщение");
@@ -389,7 +638,179 @@ export const MessengerPage = () => {
   const handleChatHeaderClick = () => {
     const currentChat = chats.find(c => c.id === selectedChat);
     if (currentChat && currentChat.isGroup) {
+      loadGroupMembers(selectedChat);
       setShowGroupSettings(true);
+    }
+  };
+
+  // Функция для загрузки участников группы
+  const loadGroupMembers = async (chatId?: number) => {
+    const currentChatId = chatId || selectedChat;
+    if (!currentChatId) return;
+    
+    try {
+      const response = await chatAPI.getChatMembers(currentChatId.toString());
+      console.log('Loaded group members:', response);
+      
+      const membersData = Array.isArray(response) ? response : (response as any)?.data || [];
+      
+      // Форматируем участников для компонента
+      const formattedMembers = membersData.map((member: any) => ({
+        id: member.user_id || member.id,
+        name: member.username || member.name,
+        online: member.is_online || false,
+        // Получаем роль пользователя (creator, admin, member)
+        role: member.role || 'member'
+      }));
+      
+      setGroupUsers(formattedMembers);
+    } catch (error: any) {
+      console.error('Ошибка загрузки участников группы:', error);
+      
+      const { title, description } = formatError(error, "Ошибка загрузки", "Не удалось загрузить список участников группы");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Функция для добавления участника в группу
+  const handleAddMember = async (userId: number) => {
+    if (!selectedChat) return;
+    
+    try {
+      const response = await chatAPI.addMember(selectedChat.toString(), userId);
+      
+      // Получаем данные о добавленном пользователе
+      const userData = response?.data?.user || response?.user;
+      
+      if (userData) {
+        // Добавляем пользователя локально в список участников группы
+        const newUser = {
+          id: userData.id,
+          name: userData.username || userData.name,
+          online: userData.is_online || false
+        };
+        
+        setGroupUsers(prevUsers => {
+          // Проверяем, не существует ли уже такой пользователь
+          const userExists = prevUsers.some(user => user.id === newUser.id);
+          if (!userExists) {
+            return [...prevUsers, newUser];
+          }
+          return prevUsers;
+        });
+      } else {
+        // Если не получили данные о пользователе, обновляем весь список
+        await loadGroupMembers();
+      }
+      
+      toast({
+        title: "Участник добавлен",
+        description: "Пользователь успешно добавлен в группу",
+      });
+    } catch (error: any) {
+      console.error('Ошибка добавления участника:', error);
+      
+      const { title, description } = formatError(error, "Ошибка добавления", "Не удалось добавить участника в группу");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+
+  // Функция для удаления участника из группы
+  const handleRemoveMember = async (userId: number) => {
+    if (!selectedChat) return;
+    
+    try {
+      await chatAPI.removeMember(selectedChat.toString(), userId);
+      
+      // После успешного удаления, перезагружаем данные о группе
+      await loadGroupMembers(selectedChat);
+      
+      toast({
+        title: "Участник удален",
+        description: "Пользователь удален из группы",
+      });
+    } catch (error: any) {
+      console.error('Ошибка удаления участника:', error);
+      
+      const { title, description } = formatError(error, "Ошибка удаления", "Не удалось удалить участника из группы");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+
+  // Функция для назначения администратора
+  const handleSetAdmin = async (userId: number) => {
+    if (!selectedChat) return;
+    
+    try {
+      await chatAPI.setAdmin(selectedChat.toString(), userId);
+      
+      // После успешного назначения, перезагружаем данные о группе
+      await loadGroupMembers(selectedChat);
+      
+      toast({
+        title: "Администратор назначен",
+        description: "Пользователь назначен администратором группы",
+      });
+    } catch (error: any) {
+      console.error('Ошибка назначения администратора:', error);
+      
+      const { title, description } = formatError(error, "Ошибка назначения", "Не удалось назначить пользователя администратором");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+  
+  // Функция для снятия прав администратора
+  const handleRemoveAdmin = async (userId: number) => {
+    if (!selectedChat) return;
+    
+    try {
+      await chatAPI.removeAdmin(selectedChat.toString(), userId);
+      
+      // После успешного снятия прав, перезагружаем данные о группе
+      await loadGroupMembers(selectedChat);
+      
+      toast({
+        title: "Права администратора сняты",
+        description: "Пользователь больше не является администратором",
+      });
+    } catch (error: any) {
+      console.error('Ошибка снятия прав администратора:', error);
+      
+      const { title, description } = formatError(error, "Ошибка управления правами", "Не удалось снять права администратора");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
     }
   };
 
@@ -397,10 +818,181 @@ export const MessengerPage = () => {
   const handleSelectChat = (chatId: number) => {
     setSelectedChat(chatId);
     localStorage.setItem('lastSelectedChat', chatId.toString());
+    
+    // Если это групповой чат, загружаем информацию о его участниках
+    const chat = chats.find(c => c.id === chatId);
+    if (chat?.isGroup) {
+      loadGroupMembers(chatId);
+    }
+  };
+
+  // Helper function to check if current user is creator of the currently selected chat
+  const isCurrentUserCreator = () => {
+    if (!currentUserId || !selectedChat || !groupUsers.length) return false;
+    const currentUser = groupUsers.find(user => user.id === currentUserId);
+    return currentUser?.role === 'creator';
+  };
+
+  // Функция для выхода из группового чата
+  const handleLeaveChat = async (chatId: number) => {
+    try {
+      const chatName = chats.find(c => c.id === chatId)?.name || '';
+      
+      // ИМИТАЦИЯ: Добавляем системное сообщение для демонстрации WebSocket уведомлений
+      const currentUsername = currentUser?.username || 'Пользователь';
+      const messageText = `${currentUsername} покинул(а) группу "${chatName}"`;
+      
+      // Делаем фактический выход на backend
+      await chatAPI.leaveChat(chatId.toString());
+      
+      // Имитируем получение WebSocket уведомления (для демонстрации)
+      const notificationEvent = new CustomEvent('chatNotification', {
+        detail: {
+          type: 'user_left',
+          chatId: chatId,
+          message: messageText
+        }
+      });
+      window.dispatchEvent(notificationEvent);
+      
+      // Обновляем список чатов
+      await loadChats();
+      
+      // Если покидаем текущий выбранный чат, сбрасываем выбор
+      if (selectedChat === chatId) {
+        setSelectedChat(null);
+        localStorage.removeItem('lastSelectedChat');
+      }
+      
+      toast({
+        title: "Вы покинули группу",
+        description: "Группа удалена из ваших чатов",
+      });
+    } catch (error: any) {
+      console.error('Ошибка выхода из группы:', error);
+      
+      const { title, description } = formatError(error, "Ошибка выхода", "Не удалось покинуть группу");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+
+  // Функция для удаления приватного чата
+  const handleDeleteChat = async (chatId: number) => {
+    try {
+      await chatAPI.deleteChat(chatId.toString());
+      
+      // Обновляем список чатов
+      await loadChats();
+      
+      // Если удаляем текущий выбранный чат, сбрасываем выбор
+      if (selectedChat === chatId) {
+        setSelectedChat(null);
+        localStorage.removeItem('lastSelectedChat');
+      }
+      
+      toast({
+        title: "Чат удален",
+        description: "Чат удален из ваших сообщений",
+      });
+    } catch (error: any) {
+      console.error('Ошибка удаления чата:', error);
+      
+      const { title, description } = formatError(error, "Ошибка удаления", "Не удалось удалить чат");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+
+  // Функция для удаления группового чата (только для создателей)
+  const handleDeleteGroupChat = async (chatId: number) => {
+    try {
+      const chatName = chats.find(c => c.id === chatId)?.name || '';
+      
+      // ИМИТАЦИЯ: Добавляем системное сообщение для демонстрации WebSocket уведомлений
+      const currentUsername = currentUser?.username || 'Пользователь';
+      const messageText = `Группа "${chatName}" была удалена создателем ${currentUsername}`;
+      
+      // Делаем фактическое удаление на backend
+      await chatAPI.deleteGroupChat(chatId.toString());
+      
+      // Имитируем получение WebSocket уведомления (для демонстрации)
+      const notificationEvent = new CustomEvent('chatNotification', {
+        detail: {
+          type: 'group_deleted',
+          chatId: chatId,
+          message: messageText
+        }
+      });
+      window.dispatchEvent(notificationEvent);
+      
+      // Обновляем список чатов
+      await loadChats();
+      
+      // Если удаляем текущий выбранный чат, сбрасываем выбор
+      if (selectedChat === chatId) {
+        setSelectedChat(null);
+        localStorage.removeItem('lastSelectedChat');
+      }
+      
+      toast({
+        title: "Группа удалена",
+        description: "Группа была полностью удалена для всех участников",
+      });
+    } catch (error: any) {
+      console.error('Ошибка удаления группы:', error);
+      
+      const { title, description } = formatError(error, "Ошибка удаления группы", "Не удалось удалить группу");
+      
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+      
+      throw error;
+    }
+  };
+
+  // Функция для добавления системного сообщения в чат
+  const addSystemMessage = (chatId: number, text: string, type: 'user_left' | 'group_deleted' | 'system' = 'system') => {
+    if (!chatId) return;
+    
+    const systemMessage = {
+      id: `system_${Date.now()}`,
+      text,
+      time: new Date().toLocaleTimeString('ru-RU', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      isOwn: false,
+      isSystem: true,
+      type,
+      user: {
+        name: 'Система'
+      }
+    };
+    
+    // Если это текущий открытый чат, добавляем сообщение в список
+    if (selectedChat === chatId) {
+      setMessages(prev => [...prev, systemMessage]);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden">
       {/* Боковая панель */}
       <MessengerSidebar 
         chats={chats}
@@ -409,6 +1001,12 @@ export const MessengerPage = () => {
         onShowProfile={() => setShowProfile(!showProfile)}
         onCreateChat={handleCreateChat}
         onRefreshChats={loadChats}
+        onShowCreateGroup={() => setShowCreateGroup(true)}
+        onLeaveChat={handleLeaveChat}
+        onDeleteChat={handleDeleteChat}
+        onDeleteGroupChat={handleDeleteGroupChat}
+        currentUserId={currentUserId}
+        groupUsers={groupUsers}
         isLoading={isLoading}
       />
 
@@ -418,31 +1016,46 @@ export const MessengerPage = () => {
           <>
             {/* Заголовок чата */}
             <div 
-              className={`bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 ${
-                chats.find(c => c.id === selectedChat)?.isGroup ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700' : ''
-              }`}
-              onClick={handleChatHeaderClick}
+              className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4"
             >
-              <div className="flex items-center space-x-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-blue-500 text-white text-sm">
-                    {chats.find(c => c.id === selectedChat)?.isGroup ? 
-                      <Users className="h-4 w-4" /> : 
-                      chats.find(c => c.id === selectedChat)?.name.charAt(0)
-                    }
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="font-medium text-gray-900 dark:text-white">
-                    {chats.find(c => c.id === selectedChat)?.name}
-                  </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {chats.find(c => c.id === selectedChat)?.isGroup 
-                      ? `${groupUsers.filter(u => u.online).length} участников в сети`
-                      : chats.find(c => c.id === selectedChat)?.online ? 'в сети' : 'был в сети недавно'
-                    }
-                  </p>
+              <div className="flex items-center justify-between">
+                <div 
+                  className={`flex items-center space-x-3 ${
+                    chats.find(c => c.id === selectedChat)?.isGroup ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg p-2 -m-2' : ''
+                  }`}
+                  onClick={handleChatHeaderClick}
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-blue-500 text-white text-sm">
+                      {chats.find(c => c.id === selectedChat)?.isGroup ? 
+                        <Users className="h-4 w-4" /> : 
+                        chats.find(c => c.id === selectedChat)?.name.charAt(0)
+                      }
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h2 className="font-medium text-gray-900 dark:text-white">
+                      {chats.find(c => c.id === selectedChat)?.name}
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {chats.find(c => c.id === selectedChat)?.isGroup 
+                        ? `${groupUsers.filter(u => u.online).length} участников в сети`
+                        : chats.find(c => c.id === selectedChat)?.online ? 'в сети' : 'был в сети недавно'
+                      }
+                    </p>
+                  </div>
                 </div>
+                
+                {/* Кнопка меню с тремя точками */}
+                <ChatHeaderMenu
+                  chatId={selectedChat}
+                  chatName={chats.find(c => c.id === selectedChat)?.name || ''}
+                  isGroup={chats.find(c => c.id === selectedChat)?.isGroup || false}
+                  isCreator={chats.find(c => c.id === selectedChat)?.isGroup ? isCurrentUserCreator() : false}
+                  onLeaveChat={() => handleLeaveChat(selectedChat)}
+                  onDeleteChat={() => handleDeleteChat(selectedChat)}
+                  onDeleteGroupChat={() => handleDeleteGroupChat(selectedChat)}
+                />
               </div>
             </div>
 
@@ -493,23 +1106,44 @@ export const MessengerPage = () => {
 
       {/* Панель профиля */}
       {showProfile && (
-        <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 p-4">
-          <div className="text-center">
+        <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 p-4 relative">
+          {/* Кнопка закрытия */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-2 right-2 h-8 w-8 p-0"
+            onClick={() => setShowProfile(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          
+          <div className="text-center mt-6">
             <Avatar className="h-20 w-20 mx-auto mb-4">
-              <AvatarFallback className="bg-blue-500 text-white text-xl">И</AvatarFallback>
+              <AvatarFallback className="bg-blue-500 text-white text-xl">
+                {currentUser?.username ? currentUser.username.charAt(0).toUpperCase() : 'У'}
+              </AvatarFallback>
             </Avatar>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white">Иван Иванов</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">@ivanov</p>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              {currentUser?.username || 'Пользователь'}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {currentUser?.email || 'email@example.com'}
+            </p>
           </div>
           
           <div className="mt-6 space-y-4">
-            <Button variant="outline" className="w-full">
-              Редактировать профиль
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => setShowChangePassword(true)}
+            >
+              Изменить пароль
             </Button>
-            <Button variant="outline" className="w-full">
-              Настройки
-            </Button>
-            <Button variant="outline" className="w-full text-red-600 hover:text-red-700">
+            <Button 
+              variant="outline" 
+              className="w-full text-red-600 hover:text-red-700"
+              onClick={handleLogout}
+            >
               Выйти
             </Button>
           </div>
@@ -522,6 +1156,25 @@ export const MessengerPage = () => {
         onClose={() => setShowGroupSettings(false)}
         groupName={chats.find(c => c.id === selectedChat)?.name || ''}
         users={groupUsers}
+        chatId={selectedChat || undefined}
+        currentUserId={currentUserId || undefined}
+        onAddMember={handleAddMember}
+        onRemoveMember={handleRemoveMember}
+        onSetAdmin={handleSetAdmin}
+        onRemoveAdmin={handleRemoveAdmin}
+      />
+
+      {/* Модальное окно изменения пароля */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
+
+      {/* Модальное окно создания группы */}
+      <CreateGroupModal
+        isOpen={showCreateGroup}
+        onClose={() => setShowCreateGroup(false)}
+        onCreateGroup={handleCreateGroup}
       />
     </div>
   );

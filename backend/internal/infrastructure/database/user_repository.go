@@ -96,3 +96,7 @@ func (r *userRepository) SearchUsers(query string, excludeUserID uint, limit int
 	err := searchQuery.Find(&users).Error
 	return users, err
 }
+
+func (r *userRepository) UpdatePassword(userID uint, passwordHash string) error {
+	return r.db.Model(&entities.User{}).Where("id = ?", userID).Update("password_hash", passwordHash).Error
+}

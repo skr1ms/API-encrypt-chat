@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     ecdsa_public_key TEXT,
     rsa_public_key TEXT,
+    ecdsa_private_key TEXT,
+    rsa_private_key TEXT,
     is_online BOOLEAN DEFAULT FALSE,
     last_seen TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -33,7 +35,7 @@ CREATE TABLE IF NOT EXISTS chat_members (
     id SERIAL PRIMARY KEY,
     chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role VARCHAR(20) DEFAULT 'member',
+    role VARCHAR(20) DEFAULT 'member' CHECK (role IN ('creator', 'admin', 'member')),
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(chat_id, user_id)
 );
@@ -138,5 +140,20 @@ $$ LANGUAGE 'plpgsql';
 -- INSERT INTO users (username, email, password_hash) VALUES
 -- ('admin', 'admin@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
 -- ('user1', 'user1@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
+
+-- Миграция для правильных ролей в существующих чатах
+DO $$
+BEGIN
+    -- Обновление роли создателя чата до 'creator'
+    UPDATE chat_members cm
+    SET role = 'creator'
+    FROM chats c
+    WHERE cm.chat_id = c.id AND cm.user_id = c.created_by;
+
+    -- Проверка, что роль соответствует валидным значениям
+    UPDATE chat_members
+    SET role = 'member'
+    WHERE role NOT IN ('creator', 'admin', 'member');
+END $$;
 
 COMMIT;

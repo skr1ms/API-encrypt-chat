@@ -1,2 +1,4 @@
 
-export { GroupSettingsModal } from './ui';
+import { GroupSettingsModal } from './ui';
+
+export { GroupSettingsModal };

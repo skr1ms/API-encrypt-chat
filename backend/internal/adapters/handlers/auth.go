@@ -134,3 +134,38 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		"data": user.(*entities.User),
 	})
 }
+
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	// Получаем пользователя из контекста (установлен middleware)
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	var req usecase.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Errorf("Change password validation failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	userEntity := user.(*entities.User)
+	err := h.authUseCase.ChangePassword(userEntity.ID, &req)
+	if err != nil {
+		h.logger.Errorf("Change password failed: %v", err)
+
+		// Обрабатываем специфичные ошибки
+		switch err.Error() {
+		case "invalid current password":
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid current password"})
+		case "new password must be different from current password":
+			c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be different from current password"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}

@@ -44,15 +44,20 @@ func main() {
 		Message:     database.NewMessageRepository(db.DB),
 		Session:     database.NewSessionRepository(db.DB),
 		KeyExchange: database.NewKeyExchangeRepository(db.DB),
-	}
-	// Инициализируем use cases
+	} // Инициализируем use cases
 	authUseCase := usecase.NewAuthUseCase(repos.User, repos.Session, cfg.JWT.Secret)
-	chatUseCase := usecase.NewChatUseCase(repos.Chat, repos.Message, repos.User, repos.KeyExchange)
 	userUseCase := usecase.NewUserUseCase(repos.User)
 
-	// Инициализируем WebSocket hub
-	wsHub := websocket.NewHub(appLogger)
+	// Инициализируем WebSocket hub (пока без chatUseCase)
+	wsHub := websocket.NewHub(appLogger, nil)
 	go wsHub.Run()
+
+	// Теперь инициализируем chatUseCase с wsHub как notificationSender
+	chatUseCase := usecase.NewChatUseCase(repos.Chat, repos.Message, repos.User, repos.KeyExchange, wsHub)
+
+	// Устанавливаем chatUseCase для wsHub
+	wsHub.SetChatUseCase(chatUseCase)
+
 	// Инициализируем handlers
 	authHandler := handlers.NewAuthHandler(authUseCase, appLogger)
 	chatHandler := handlers.NewChatHandler(chatUseCase, wsHub, appLogger)
@@ -81,15 +86,17 @@ func main() {
 
 	// API routes
 	api := router.Group("/api/v1")
-	{
-		// Auth routes
+	{ // Auth routes
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/logout", authMiddleware.RequireAuth(), authHandler.Logout)
 			auth.GET("/profile", authMiddleware.RequireAuth(), authHandler.GetProfile)
-		} // Chat routes
+			auth.POST("/change-password", authMiddleware.RequireAuth(), authHandler.ChangePassword)
+		}
+
+		// Chat routes
 		chats := api.Group("/chats")
 		chats.Use(authMiddleware.RequireAuth())
 		{
@@ -98,8 +105,14 @@ func main() {
 			chats.GET("", chatHandler.GetUserChats)
 			chats.GET("/:id/messages", chatHandler.GetChatMessages)
 			chats.POST("/:id/messages", chatHandler.SendMessage)
+			chats.GET("/:id/members", chatHandler.GetChatMembers)
 			chats.POST("/:id/members", chatHandler.AddMember)
 			chats.DELETE("/:id/members/:userId", chatHandler.RemoveMember)
+			chats.PUT("/:id/members/:userId/admin", chatHandler.SetAdmin)
+			chats.DELETE("/:id/members/:userId/admin", chatHandler.RemoveAdmin)
+			chats.POST("/:id/leave", chatHandler.LeaveChat)
+			chats.DELETE("/:id", chatHandler.DeleteChat)
+			chats.DELETE("/:id/delete", chatHandler.DeleteGroupChat)
 		}
 
 		// User routes
@@ -110,9 +123,8 @@ func main() {
 			users.GET("/online", userHandler.GetOnlineUsers)
 			users.GET("/:id", userHandler.GetUser)
 		}
-
 		// WebSocket route
-		api.GET("/ws", authMiddleware.RequireAuth(), wsHandler.HandleWebSocket)
+		api.GET("/ws", authMiddleware.WebSocketAuth(), wsHandler.HandleWebSocket)
 	}
 
 	// Запускаем сервер
@@ -125,8 +137,9 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
-
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+	// Код не достигается при нормальной работе сервера,
+	// так как ListenAndServe блокирует выполнение
 }

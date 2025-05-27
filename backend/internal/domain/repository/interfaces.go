@@ -14,6 +14,7 @@ type UserRepository interface {
 	Update(user *entities.User) error
 	Delete(id uint) error
 	UpdateOnlineStatus(userID uint, isOnline bool) error
+	UpdatePassword(userID uint, passwordHash string) error
 	GetOnlineUsers() ([]entities.User, error)
 	SearchUsers(query string, excludeUserID uint, limit int) ([]entities.User, error)
 }
@@ -28,8 +29,11 @@ type ChatRepository interface {
 	AddMember(chatID, userID uint, role string) error
 	RemoveMember(chatID, userID uint) error
 	GetMembers(chatID uint) ([]entities.User, error)
+	GetMembersWithRoles(chatID uint) ([]*entities.User, error)
 	IsMember(chatID, userID uint) (bool, error)
 	FindPrivateChat(userID1, userID2 uint) (*entities.Chat, error)
+	UpdateMemberRole(chatID, userID uint, role string) error
+	GetMemberRole(chatID, userID uint) (string, error)
 }
 
 // MessageRepository интерфейс для работы с сообщениями

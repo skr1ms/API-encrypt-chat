@@ -95,3 +95,56 @@ func (r *chatRepository) FindPrivateChat(userID1, userID2 uint) (*entities.Chat,
 
 	return &chat, nil
 }
+
+// GetMembersWithRoles возвращает пользователей с информацией об их роли в чате
+func (r *chatRepository) GetMembersWithRoles(chatID uint) ([]*entities.User, error) {
+	type userWithRole struct {
+		entities.User
+		Role string `gorm:"column:role"`
+	}
+
+	var usersWithRoles []userWithRole
+
+	// Извлекаем пользователей и их роли из таблицы chat_members
+	err := r.db.Model(&entities.User{}).
+		Select("users.*, chat_members.role").
+		Joins("JOIN chat_members ON users.id = chat_members.user_id").
+		Where("chat_members.chat_id = ?", chatID).
+		Scan(&usersWithRoles).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Преобразуем результаты в []*entities.User с заполненным полем Role
+	result := make([]*entities.User, len(usersWithRoles))
+	for i, ur := range usersWithRoles {
+		user := ur.User
+		user.Role = ur.Role
+		result[i] = &user
+	}
+
+	return result, nil
+}
+
+// UpdateMemberRole обновляет роль пользователя в чате
+func (r *chatRepository) UpdateMemberRole(chatID, userID uint, role string) error {
+	return r.db.Model(&entities.ChatMember{}).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Update("role", role).
+		Error
+}
+
+// GetMemberRole возвращает роль пользователя в чате
+func (r *chatRepository) GetMemberRole(chatID, userID uint) (string, error) {
+	var member entities.ChatMember
+	err := r.db.
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		First(&member).Error
+
+	if err != nil {
+		return "", err
+	}
+
+	return member.Role, nil
+}

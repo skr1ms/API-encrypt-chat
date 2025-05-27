@@ -77,6 +77,54 @@ func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 	}
 }
 
+// WebSocketAuth is a middleware specifically for WebSocket connections
+// It can read token from both Authorization header and query parameter
+func (m *AuthMiddleware) WebSocketAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var token string
+
+		// Try to get token from Authorization header first
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			bearerToken := strings.Split(authHeader, " ")
+			if len(bearerToken) == 2 && bearerToken[0] == "Bearer" {
+				token = bearerToken[1]
+				m.logger.Infof("WebSocket: Got token from Authorization header, length: %d", len(token))
+			}
+		}
+
+		// If no token in header, try query parameter
+		if token == "" {
+			token = c.Query("token")
+			if token != "" {
+				m.logger.Infof("WebSocket: Got token from query parameter, length: %d", len(token))
+			} else {
+				m.logger.Errorf("WebSocket: No token found in header or query parameter")
+			}
+		}
+
+		// If still no token, return unauthorized
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required in Authorization header or query parameter"})
+			c.Abort()
+			return
+		}
+
+		// Validate token
+		user, err := m.authUseCase.ValidateToken(token)
+		if err != nil {
+			m.logger.Errorf("Token validation failed: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user", user)
+		c.Set("token", token)
+		c.Next()
+	}
+}
+
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

@@ -82,9 +82,19 @@ func CreateSecureMessage(senderID, recipientID string, plaintext []byte, sharedS
 
 // VerifyAndDecryptMessage проверяет и расшифровывает защищенное сообщение
 func VerifyAndDecryptMessage(msg *SecureMessage, sharedSecret []byte, senderECDSAPublicKey, senderRSAPublicKey []byte) ([]byte, error) {
+	fmt.Printf("DEBUG: VerifyAndDecryptMessage called for message ID: %s\n", msg.ID)
+
+	// Safe ciphertext preview for debug logging
+	ciphertextPreview := msg.Ciphertext
+	if len(msg.Ciphertext) > 50 {
+		ciphertextPreview = msg.Ciphertext[:50] + "..."
+	}
+	fmt.Printf("DEBUG: Ciphertext: %s\n", ciphertextPreview)
+
 	// Проверяем timestamp
 	now := time.Now().Unix()
 	if now-msg.Timestamp > MaxTimeDifference || now < msg.Timestamp {
+		fmt.Printf("DEBUG: Timestamp check failed - now: %d, msg: %d\n", now, msg.Timestamp)
 		return nil, errors.New("timestamp is out of acceptable range")
 	}
 
@@ -132,11 +142,14 @@ func VerifyAndDecryptMessage(msg *SecureMessage, sharedSecret []byte, senderECDS
 	}
 
 	// Расшифровываем сообщение
+	fmt.Printf("DEBUG: About to decrypt message with AES\n")
 	plaintext, err := AESDecrypt(sharedSecret[:AESKeySize], iv, ciphertext)
 	if err != nil {
+		fmt.Printf("DEBUG: AES decryption failed: %v\n", err)
 		return nil, fmt.Errorf("failed to decrypt message: %v", err)
 	}
 
+	fmt.Printf("DEBUG: Successfully decrypted message: %s\n", string(plaintext))
 	return plaintext, nil
 }
 
