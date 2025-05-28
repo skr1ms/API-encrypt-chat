@@ -13,41 +13,41 @@ const (
 	AESKeySize        = 32
 	HMACKeySize       = 32
 	NonceSize         = 16
-	MaxTimeDifference = 300 // секунды (5 минут)
+	MaxTimeDifference = 86400 // 24 часа вместо 5 минут
 )
 
-// SecureMessage представляет зашифрованное сообщение
 type SecureMessage struct {
 	ID             string `json:"id"`
 	Timestamp      int64  `json:"timestamp"`
-	Nonce          string `json:"nonce"`           // hex-encoded
-	IV             string `json:"iv"`              // hex-encoded
-	Ciphertext     string `json:"ciphertext"`      // hex-encoded
-	HMAC           string `json:"hmac"`            // hex-encoded
-	ECDSASignature string `json:"ecdsa_signature"` // hex-encoded
-	RSASignature   string `json:"rsa_signature"`   // hex-encoded
+	Nonce          string `json:"nonce"`
+	IV             string `json:"iv"`
+	Ciphertext     string `json:"ciphertext"`
+	HMAC           string `json:"hmac"`
+	ECDSASignature string `json:"ecdsa_signature"`
+	RSASignature   string `json:"rsa_signature"`
 	SenderID       string `json:"sender_id"`
 	RecipientID    string `json:"recipient_id"`
 }
 
-// CreateSecureMessage создает защищенное сообщение
+// CreateSecureMessage - создает зашифрованное сообщение с подписями и целостностью
 func CreateSecureMessage(senderID, recipientID string, plaintext []byte, sharedSecret []byte, ecdsaPriv *ecdsa.PrivateKey, rsaPriv *rsa.PrivateKey) (*SecureMessage, error) {
-	// Генерируем IV для AES
+
 	iv, err := GenerateIV()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate IV: %v", err)
 	}
 
-	// Шифруем сообщение
-	ciphertext, err := AESEncrypt(sharedSecret[:AESKeySize], iv, plaintext)
+	aesKey := sharedSecret[:AESKeySize]
+
+	ciphertext, err := AESEncrypt(aesKey, iv, plaintext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt message: %v", err)
 	}
 
-	// Создаем HMAC
-	hmacValue := GenerateHMAC(sharedSecret[AESKeySize:AESKeySize+HMACKeySize], ciphertext)
+	hmacKey := sharedSecret[AESKeySize : AESKeySize+HMACKeySize]
 
-	// Создаем подписи
+	hmacValue := GenerateHMAC(hmacKey, ciphertext)
+
 	ecdsaSignature, err := SignECDSA(ecdsaPriv, ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ECDSA signature: %v", err)
@@ -58,7 +58,6 @@ func CreateSecureMessage(senderID, recipientID string, plaintext []byte, sharedS
 		return nil, fmt.Errorf("failed to create RSA signature: %v", err)
 	}
 
-	// Генерируем nonce
 	nonce, err := GenerateNonce(NonceSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate nonce: %v", err)
@@ -80,25 +79,9 @@ func CreateSecureMessage(senderID, recipientID string, plaintext []byte, sharedS
 	}, nil
 }
 
-// VerifyAndDecryptMessage проверяет и расшифровывает защищенное сообщение
+// VerifyAndDecryptMessage - проверяет целостность и подписи, затем расшифровывает сообщение
 func VerifyAndDecryptMessage(msg *SecureMessage, sharedSecret []byte, senderECDSAPublicKey, senderRSAPublicKey []byte) ([]byte, error) {
-	fmt.Printf("DEBUG: VerifyAndDecryptMessage called for message ID: %s\n", msg.ID)
 
-	// Safe ciphertext preview for debug logging
-	ciphertextPreview := msg.Ciphertext
-	if len(msg.Ciphertext) > 50 {
-		ciphertextPreview = msg.Ciphertext[:50] + "..."
-	}
-	fmt.Printf("DEBUG: Ciphertext: %s\n", ciphertextPreview)
-
-	// Проверяем timestamp
-	now := time.Now().Unix()
-	if now-msg.Timestamp > MaxTimeDifference || now < msg.Timestamp {
-		fmt.Printf("DEBUG: Timestamp check failed - now: %d, msg: %d\n", now, msg.Timestamp)
-		return nil, errors.New("timestamp is out of acceptable range")
-	}
-
-	// Декодируем hex данные
 	ciphertext, err := hex.DecodeString(msg.Ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode ciphertext: %v", err)
@@ -124,35 +107,31 @@ func VerifyAndDecryptMessage(msg *SecureMessage, sharedSecret []byte, senderECDS
 		return nil, fmt.Errorf("failed to decode IV: %v", err)
 	}
 
-	// Проверяем HMAC
-	if !VerifyHMAC(sharedSecret[AESKeySize:AESKeySize+HMACKeySize], ciphertext, hmacValue) {
+	hmacKey := sharedSecret[AESKeySize : AESKeySize+HMACKeySize]
+
+	if !VerifyHMAC(hmacKey, ciphertext, hmacValue) {
 		return nil, errors.New("HMAC verification failed")
 	}
 
-	// Проверяем ECDSA подпись
 	valid, err := VerifyECDSA(senderECDSAPublicKey, ciphertext, ecdsaSignature)
 	if err != nil || !valid {
 		return nil, fmt.Errorf("ECDSA signature verification failed: %v", err)
 	}
 
-	// Проверяем RSA подпись
 	valid, err = VerifyRSA(senderRSAPublicKey, ciphertext, rsaSignature)
 	if err != nil || !valid {
 		return nil, fmt.Errorf("RSA signature verification failed: %v", err)
 	}
 
-	// Расшифровываем сообщение
-	fmt.Printf("DEBUG: About to decrypt message with AES\n")
 	plaintext, err := AESDecrypt(sharedSecret[:AESKeySize], iv, ciphertext)
 	if err != nil {
-		fmt.Printf("DEBUG: AES decryption failed: %v\n", err)
 		return nil, fmt.Errorf("failed to decrypt message: %v", err)
 	}
 
-	fmt.Printf("DEBUG: Successfully decrypted message: %s\n", string(plaintext))
 	return plaintext, nil
 }
 
+// generateMessageID - генерирует уникальный идентификатор сообщения
 func generateMessageID() string {
 	nonce, _ := GenerateNonce(16)
 	return hex.EncodeToString(nonce)

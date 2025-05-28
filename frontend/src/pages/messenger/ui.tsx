@@ -24,7 +24,7 @@ interface Chat {
   unread: number;
   online: boolean;
   isGroup?: boolean;
-  isCreator?: boolean; // Добавляем поле для определения создателя
+  isCreator?: boolean;
 }
 
 export const MessengerPage = () => {
@@ -192,10 +192,8 @@ export const MessengerPage = () => {
     if (userDataString) {
       try {
         const userData = JSON.parse(userDataString);
-        console.log('User data from localStorage:', userData);
         if (userData && userData.id) {
           const userId = typeof userData.id === 'string' ? parseInt(userData.id, 10) : userData.id;
-          console.log('Setting currentUserId to:', userId);
           setCurrentUserId(userId);
         }
       } catch (error) {
@@ -212,9 +210,7 @@ export const MessengerPage = () => {
     // Обработчик для системных уведомлений из WebSocket
     const handleChatNotification = (e: any) => {
       const notification = e.detail;
-      console.log('Chat notification received:', notification);
       
-      // Получаем chatId из notification
       const chatId = notification.chatId ? Number(notification.chatId) : undefined;
       if (!chatId) return;
       
@@ -253,29 +249,21 @@ export const MessengerPage = () => {
         });
       }
       else if (notification.type === 'user_joined') {
-        // Новый пользователь присоединился к группе
-        console.log('User joined notification:', notification);
         
-        // Если это текущий открытый чат, обновляем список участников
         if (selectedChat === chatId) {
-          // Добавляем системное сообщение
           addSystemMessage(chatId, notification.message || 'Пользователь присоединился к группе', 'user_joined');
           
-          // Обновляем список участников группы
           loadGroupMembers(chatId);
         }
         
-        // Обновляем список чатов для обновления информации о последнем сообщении
         loadChats();
         
-        // Показываем уведомление
         toast({
           title: "Новый участник",
           description: notification.message,
         });
       }
       else if (notification.type === 'group_created') {
-        // Новая группа была создана
         loadChats();
         
         toast({

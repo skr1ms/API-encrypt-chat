@@ -11,14 +11,17 @@ type chatRepository struct {
 	db *gorm.DB
 }
 
+// NewChatRepository - создает новый экземпляр репозитория чатов
 func NewChatRepository(db *gorm.DB) repository.ChatRepository {
 	return &chatRepository{db: db}
 }
 
+// Create - создает новый чат в базе данных
 func (r *chatRepository) Create(chat *entities.Chat) error {
 	return r.db.Create(chat).Error
 }
 
+// GetByID - получает чат по его ID с загрузкой создателя и участников
 func (r *chatRepository) GetByID(id uint) (*entities.Chat, error) {
 	var chat entities.Chat
 	err := r.db.Preload("Creator").Preload("Members").First(&chat, id).Error
@@ -28,6 +31,7 @@ func (r *chatRepository) GetByID(id uint) (*entities.Chat, error) {
 	return &chat, nil
 }
 
+// GetUserChats - получает все чаты пользователя
 func (r *chatRepository) GetUserChats(userID uint) ([]entities.Chat, error) {
 	var chats []entities.Chat
 	err := r.db.
@@ -39,14 +43,17 @@ func (r *chatRepository) GetUserChats(userID uint) ([]entities.Chat, error) {
 	return chats, err
 }
 
+// Update - обновляет данные чата в базе данных
 func (r *chatRepository) Update(chat *entities.Chat) error {
 	return r.db.Save(chat).Error
 }
 
+// Delete - удаляет чат из базы данных по ID
 func (r *chatRepository) Delete(id uint) error {
 	return r.db.Delete(&entities.Chat{}, id).Error
 }
 
+// AddMember - добавляет участника в чат с указанной ролью
 func (r *chatRepository) AddMember(chatID, userID uint, role string) error {
 	member := &entities.ChatMember{
 		ChatID: chatID,
@@ -56,10 +63,12 @@ func (r *chatRepository) AddMember(chatID, userID uint, role string) error {
 	return r.db.Create(member).Error
 }
 
+// RemoveMember - удаляет участника из чата
 func (r *chatRepository) RemoveMember(chatID, userID uint) error {
 	return r.db.Where("chat_id = ? AND user_id = ?", chatID, userID).Delete(&entities.ChatMember{}).Error
 }
 
+// GetMembers - получает список всех участников чата
 func (r *chatRepository) GetMembers(chatID uint) ([]entities.User, error) {
 	var users []entities.User
 	err := r.db.
@@ -69,6 +78,7 @@ func (r *chatRepository) GetMembers(chatID uint) ([]entities.User, error) {
 	return users, err
 }
 
+// IsMember - проверяет, является ли пользователь участником чата
 func (r *chatRepository) IsMember(chatID, userID uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&entities.ChatMember{}).
@@ -77,10 +87,10 @@ func (r *chatRepository) IsMember(chatID, userID uint) (bool, error) {
 	return count > 0, err
 }
 
+// FindPrivateChat - находит приватный чат между двумя пользователями
 func (r *chatRepository) FindPrivateChat(userID1, userID2 uint) (*entities.Chat, error) {
 	var chat entities.Chat
 
-	// Ищем приватный чат между двумя пользователями
 	err := r.db.
 		Preload("Creator").
 		Preload("Members").
@@ -96,7 +106,7 @@ func (r *chatRepository) FindPrivateChat(userID1, userID2 uint) (*entities.Chat,
 	return &chat, nil
 }
 
-// GetMembersWithRoles возвращает пользователей с информацией об их роли в чате
+// GetMembersWithRoles - получает список участников чата с их ролями
 func (r *chatRepository) GetMembersWithRoles(chatID uint) ([]*entities.User, error) {
 	type userWithRole struct {
 		entities.User
@@ -105,7 +115,6 @@ func (r *chatRepository) GetMembersWithRoles(chatID uint) ([]*entities.User, err
 
 	var usersWithRoles []userWithRole
 
-	// Извлекаем пользователей и их роли из таблицы chat_members
 	err := r.db.Model(&entities.User{}).
 		Select("users.*, chat_members.role").
 		Joins("JOIN chat_members ON users.id = chat_members.user_id").
@@ -116,7 +125,6 @@ func (r *chatRepository) GetMembersWithRoles(chatID uint) ([]*entities.User, err
 		return nil, err
 	}
 
-	// Преобразуем результаты в []*entities.User с заполненным полем Role
 	result := make([]*entities.User, len(usersWithRoles))
 	for i, ur := range usersWithRoles {
 		user := ur.User
@@ -127,7 +135,7 @@ func (r *chatRepository) GetMembersWithRoles(chatID uint) ([]*entities.User, err
 	return result, nil
 }
 
-// UpdateMemberRole обновляет роль пользователя в чате
+// UpdateMemberRole - обновляет роль участника чата
 func (r *chatRepository) UpdateMemberRole(chatID, userID uint, role string) error {
 	return r.db.Model(&entities.ChatMember{}).
 		Where("chat_id = ? AND user_id = ?", chatID, userID).
@@ -135,7 +143,7 @@ func (r *chatRepository) UpdateMemberRole(chatID, userID uint, role string) erro
 		Error
 }
 
-// GetMemberRole возвращает роль пользователя в чате
+// GetMemberRole - получает роль участника в чате
 func (r *chatRepository) GetMemberRole(chatID, userID uint) (string, error) {
 	var member entities.ChatMember
 	err := r.db.

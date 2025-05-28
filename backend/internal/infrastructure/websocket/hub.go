@@ -14,7 +14,6 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// В продакшене нужно проверять origin
 		return true
 	},
 }
@@ -76,6 +75,7 @@ type UserStatusMessage struct {
 	IsOnline bool   `json:"is_online"`
 }
 
+// NewHub - создает новый экземпляр WebSocket хаба
 func NewHub(logger *logger.Logger, chatUseCase *usecase.ChatUseCase) *Hub {
 	return &Hub{
 		clients:     make(map[*Client]bool),
@@ -87,12 +87,12 @@ func NewHub(logger *logger.Logger, chatUseCase *usecase.ChatUseCase) *Hub {
 	}
 }
 
-// SetChatUseCase устанавливает chatUseCase после создания Hub
-// Это нужно для разрешения циклической зависимости между Hub и ChatUseCase
+// SetChatUseCase - устанавливает сервис чатов для хаба
 func (h *Hub) SetChatUseCase(chatUseCase *usecase.ChatUseCase) {
 	h.chatUseCase = chatUseCase
 }
 
+// Run - запускает основной цикл обработки WebSocket событий
 func (h *Hub) Run() {
 	for {
 		select {
@@ -103,7 +103,6 @@ func (h *Hub) Run() {
 
 			h.logger.Infof("Client connected: user_id=%d", client.userID)
 
-			// Уведомляем других клиентов о том, что пользователь онлайн
 			h.broadcastUserStatus(client.userID, client.user.Username, true)
 
 		case client := <-h.unregister:
@@ -116,7 +115,6 @@ func (h *Hub) Run() {
 
 			h.logger.Infof("Client disconnected: user_id=%d", client.userID)
 
-			// Уведомляем других клиентов о том, что пользователь офлайн
 			h.broadcastUserStatus(client.userID, client.user.Username, false)
 
 		case message := <-h.broadcast:
@@ -134,6 +132,7 @@ func (h *Hub) Run() {
 	}
 }
 
+// broadcastUserStatus - отправляет всем клиентам информацию о статусе пользователя
 func (h *Hub) broadcastUserStatus(userID uint, username string, isOnline bool) {
 	message := WSMessage{
 		Type: MessageTypeUserStatus,
@@ -154,6 +153,7 @@ func (h *Hub) broadcastUserStatus(userID uint, username string, isOnline bool) {
 	h.broadcast <- data
 }
 
+// SendToUser - отправляет сообщение конкретному пользователю
 func (h *Hub) SendToUser(userID uint, message WSMessage) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -177,9 +177,8 @@ func (h *Hub) SendToUser(userID uint, message WSMessage) error {
 	return nil
 }
 
+// SendToChat - отправляет сообщение всем участникам чата кроме исключенного пользователя
 func (h *Hub) SendToChat(chatID uint, message WSMessage, excludeUserID uint) error {
-	// В реальном приложении нужно получить список участников чата
-	// Пока что отправляем всем клиентам кроме отправителя
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -189,19 +188,18 @@ func (h *Hub) SendToChat(chatID uint, message WSMessage, excludeUserID uint) err
 	}
 
 	for client := range h.clients {
-		if client.userID != excludeUserID {
-			select {
-			case client.send <- data:
-			default:
-				close(client.send)
-				delete(h.clients, client)
-			}
+		select {
+		case client.send <- data:
+		default:
+			close(client.send)
+			delete(h.clients, client)
 		}
 	}
 
 	return nil
 }
 
+// BroadcastMessage - отправляет сообщение всем подключенным клиентам
 func (h *Hub) BroadcastMessage(message WSMessage) error {
 	data, err := json.Marshal(message)
 	if err != nil {
@@ -212,6 +210,7 @@ func (h *Hub) BroadcastMessage(message WSMessage) error {
 	return nil
 }
 
+// GetOnlineUsers - получает список ID всех онлайн пользователей
 func (h *Hub) GetOnlineUsers() []uint {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -224,19 +223,14 @@ func (h *Hub) GetOnlineUsers() []uint {
 	return userIDs
 }
 
+// SendNotificationToChat - отправляет уведомление всем участникам чата
 func (h *Hub) SendNotificationToChat(chatID uint, notification *entities.Notification) {
-	// Для отправки уведомлений всем пользователям чата нам не обязательно
-	// запрашивать всю информацию о чате, достаточно получить список участников
-
-	// Используем системный userID (0) для получения списка участников
-	// Это безопасно, так как для системных сообщений мы хотим получить всех участников
 	members, err := h.chatUseCase.GetChatMembers(chatID, 0)
 	if err != nil {
 		h.logger.Errorf("Failed to get chat members for notification: %v", err)
 		return
 	}
 
-	// Создаем WebSocket сообщение
 	wsMsg := entities.WebSocketMessage{
 		Type:         "notification",
 		ChatID:       chatID,
@@ -252,7 +246,6 @@ func (h *Hub) SendNotificationToChat(chatID uint, notification *entities.Notific
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Отправляем уведомление всем онлайн участникам чата
 	for client := range h.clients {
 		for _, member := range members {
 			if client.userID == member.ID {
@@ -268,10 +261,12 @@ func (h *Hub) SendNotificationToChat(chatID uint, notification *entities.Notific
 	}
 }
 
+// getTimestamp - получает текущую временную метку
 func getTimestamp() int64 {
 	return getCurrentTimestamp()
 }
 
+// getCurrentTimestamp - возвращает текущее время в формате Unix timestamp
 func getCurrentTimestamp() int64 {
 	return time.Now().Unix()
 }

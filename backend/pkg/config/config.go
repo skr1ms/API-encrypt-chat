@@ -41,6 +41,7 @@ type CORSConfig struct {
 	AllowedHeaders []string
 }
 
+// Load - загружает конфигурацию приложения из переменных окружения
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -64,7 +65,7 @@ func Load() *Config {
 		CORS: CORSConfig{
 			AllowedOrigins: []string{
 				getEnv("FRONTEND_URL", "http://localhost:3000"),
-				"http://localhost:5173", // Vite dev server
+				"http://localhost:5173",
 			},
 			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 			AllowedHeaders: []string{"Content-Type", "Authorization", "X-Requested-With"},
@@ -72,11 +73,13 @@ func Load() *Config {
 	}
 }
 
+// DSN - возвращает строку подключения к базе данных PostgreSQL
 func (c *DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		c.Host, c.Port, c.Username, c.Password, c.DBName, c.SSLMode)
 }
 
+// getEnv - получает значение переменной окружения или возвращает значение по умолчанию
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -84,6 +87,7 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// getEnvAsInt - получает переменную окружения как целое число или возвращает значение по умолчанию
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
@@ -93,6 +97,7 @@ func getEnvAsInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
+// getEnvAsDuration - получает переменную окружения как продолжительность времени или возвращает значение по умолчанию
 func getEnvAsDuration(key string, defaultValue string) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if duration, err := time.ParseDuration(value); err == nil {

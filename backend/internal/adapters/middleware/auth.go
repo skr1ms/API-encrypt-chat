@@ -14,6 +14,7 @@ type AuthMiddleware struct {
 	logger      *logger.Logger
 }
 
+// NewAuthMiddleware - создает новый экземпляр middleware для аутентификации
 func NewAuthMiddleware(authUseCase *usecase.AuthUseCase, logger *logger.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
 		authUseCase: authUseCase,
@@ -21,6 +22,7 @@ func NewAuthMiddleware(authUseCase *usecase.AuthUseCase, logger *logger.Logger) 
 	}
 }
 
+// RequireAuth - middleware для обязательной аутентификации пользователя
 func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -40,7 +42,6 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		token := bearerToken[1]
 		user, err := m.authUseCase.ValidateToken(token)
 		if err != nil {
-			m.logger.Errorf("Token validation failed: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
@@ -52,6 +53,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth - middleware для опциональной аутентификации пользователя
 func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -77,43 +79,28 @@ func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 	}
 }
 
-// WebSocketAuth is a middleware specifically for WebSocket connections
-// It can read token from both Authorization header and query parameter
+// WebSocketAuth - middleware для аутентификации WebSocket соединений
 func (m *AuthMiddleware) WebSocketAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var token string
-
-		// Try to get token from Authorization header first
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			bearerToken := strings.Split(authHeader, " ")
 			if len(bearerToken) == 2 && bearerToken[0] == "Bearer" {
 				token = bearerToken[1]
-				m.logger.Infof("WebSocket: Got token from Authorization header, length: %d", len(token))
 			}
 		}
-
-		// If no token in header, try query parameter
 		if token == "" {
 			token = c.Query("token")
-			if token != "" {
-				m.logger.Infof("WebSocket: Got token from query parameter, length: %d", len(token))
-			} else {
-				m.logger.Errorf("WebSocket: No token found in header or query parameter")
-			}
 		}
 
-		// If still no token, return unauthorized
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required in Authorization header or query parameter"})
 			c.Abort()
 			return
 		}
-
-		// Validate token
 		user, err := m.authUseCase.ValidateToken(token)
 		if err != nil {
-			m.logger.Errorf("Token validation failed: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
@@ -125,6 +112,7 @@ func (m *AuthMiddleware) WebSocketAuth() gin.HandlerFunc {
 	}
 }
 
+// CORSMiddleware - middleware для настройки CORS заголовков
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -141,6 +129,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
+// LoggerMiddleware - middleware для логирования HTTP запросов
 func LoggerMiddleware(logger *logger.Logger) gin.HandlerFunc {
 	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		logger.Infof("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",

@@ -16,13 +16,13 @@ export interface ResizablePanelsConfig {
 }
 
 const DEFAULT_CONFIG: ResizablePanelsConfig = {
-  minSidebar: 180,
+  minSidebar: 255, 
   maxSidebar: 450,
   minMain: 300,
   minProfile: 250,
   maxProfile: 450,
   defaultSizes: {
-    sidebar: 320,
+    sidebar: 255,
     main: 0, // будет вычислено динамически
     profile: 320,
   },

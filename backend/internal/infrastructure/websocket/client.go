@@ -20,6 +20,7 @@ const (
 	maxMessageSize = 512
 )
 
+// ServeWS - обрабатывает WebSocket подключения и создает нового клиента
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, user *entities.User) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -41,6 +42,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, user *entities.Use
 	go client.readPump()
 }
 
+// readPump - читает сообщения от WebSocket клиента
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -63,11 +65,11 @@ func (c *Client) readPump() {
 			break
 		}
 
-		// Обрабатываем входящее сообщение
 		c.handleMessage(message)
 	}
 }
 
+// writePump - отправляет сообщения WebSocket клиенту
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -90,7 +92,6 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Добавляем дополнительные сообщения из очереди
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
@@ -110,6 +111,7 @@ func (c *Client) writePump() {
 	}
 }
 
+// handleMessage - обрабатывает входящие WebSocket сообщения
 func (c *Client) handleMessage(data []byte) {
 	var message WSMessage
 	if err := json.Unmarshal(data, &message); err != nil {
@@ -131,14 +133,13 @@ func (c *Client) handleMessage(data []byte) {
 	}
 }
 
+// handleChatMessage - обрабатывает сообщения чата и отправляет их через usecase
 func (c *Client) handleChatMessage(message WSMessage) {
-	// Проверяем, что chat ID указан
 	if message.ChatID == 0 {
 		c.sendError("Chat ID is required")
 		return
 	}
 
-	// Извлекаем содержимое сообщения из данных
 	var chatData map[string]interface{}
 	dataBytes, err := json.Marshal(message.Data)
 	if err != nil {
@@ -162,13 +163,11 @@ func (c *Client) handleChatMessage(message WSMessage) {
 		messageType = "text"
 	}
 
-	// Создаем запрос для usecase
 	req := &usecase.SendMessageRequest{
 		Content:     content,
 		MessageType: messageType,
 	}
 
-	// Получаем приватные ключи пользователя из базы данных
 	var ecdsaPrivateKey *ecdsa.PrivateKey
 	var rsaPrivateKey *rsa.PrivateKey
 
@@ -189,7 +188,6 @@ func (c *Client) handleChatMessage(message WSMessage) {
 			return
 		}
 	}
-	// Отправляем сообщение через chat usecase
 	sentMessage, err := c.hub.chatUseCase.SendMessage(message.ChatID, c.userID, req, ecdsaPrivateKey, rsaPrivateKey)
 	if err != nil {
 		c.hub.logger.Errorf("Failed to send message via usecase: %v", err)
@@ -197,7 +195,6 @@ func (c *Client) handleChatMessage(message WSMessage) {
 		return
 	}
 
-	// Создаем WebSocket сообщение для рассылки с расшифрованным контентом
 	wsMessage := WSMessage{
 		Type:   MessageTypeChat,
 		ChatID: message.ChatID,
@@ -206,7 +203,7 @@ func (c *Client) handleChatMessage(message WSMessage) {
 			ID:             sentMessage.ID,
 			ChatID:         sentMessage.ChatID,
 			SenderID:       sentMessage.SenderID,
-			Content:        content, // Отправляем оригинальный нешифрованный контент
+			Content:        content,
 			MessageType:    sentMessage.MessageType,
 			Nonce:          sentMessage.Nonce,
 			IV:             sentMessage.IV,
@@ -218,21 +215,20 @@ func (c *Client) handleChatMessage(message WSMessage) {
 		Timestamp: time.Now().Unix(),
 	}
 
-	// Отправляем сообщение всем участникам чата кроме отправителя
 	c.hub.SendToChat(message.ChatID, wsMessage, c.userID)
 }
 
+// handleKeyExchange - обрабатывает сообщения обмена ключами между пользователями
 func (c *Client) handleKeyExchange(message WSMessage) {
-	// Обработка обмена ключами
 	if message.To == 0 {
 		c.sendError("Recipient ID is required for key exchange")
 		return
 	}
 
-	// Отправляем сообщение конкретному пользователю
 	c.hub.SendToUser(message.To, message)
 }
 
+// sendError - отправляет сообщение об ошибке клиенту
 func (c *Client) sendError(errMsg string) {
 	errorMessage := WSMessage{
 		Type: MessageTypeError,

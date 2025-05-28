@@ -60,16 +60,13 @@ export const MessengerSidebar = ({
 
   const handleUserSelect = async (user: User) => {
     try {
-      // Используем новый API для создания или получения приватного чата
       const response = await chatAPI.createOrGetPrivateChat(user.id, user.username);
       
       if (response.data?.chat) {
-        // Обновляем список чатов
         if (onRefreshChats) {
           await onRefreshChats();
         }
         
-        // Если чат был создан или найден, выбираем его
         onSelectChat(response.data.chat.id);
         setShowUserSearch(false);
         
@@ -111,7 +108,6 @@ export const MessengerSidebar = ({
 
   return (
     <div ref={panelRef} className="w-full h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-      {/* Заголовок */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2 min-w-0 flex-1">
@@ -146,7 +142,6 @@ export const MessengerSidebar = ({
       </div>
 
       {showUserSearch ? (
-        /* Поиск пользователей */
         <div className="flex-1 overflow-y-auto">
           <div className={`${isNarrow ? 'p-2' : 'p-4'}`}>
             <UserSearch 
@@ -157,7 +152,6 @@ export const MessengerSidebar = ({
         </div>
       ) : (
         <>
-          {/* Кнопки действий */}
           <div className="p-4 space-y-2 flex-shrink-0">
             <Button 
               variant="outline" 

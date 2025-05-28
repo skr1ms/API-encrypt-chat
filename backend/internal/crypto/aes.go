@@ -8,12 +8,11 @@ import (
 	"time"
 )
 
-// AESEncrypt шифрует данные с использованием AES-256-CBC
+// AESEncrypt - шифрует данные с использованием алгоритма AES-256-CBC
 func AESEncrypt(key, iv, plaintext []byte) ([]byte, error) {
 	start := time.Now()
 	defer func() {
 		encryptionTime := time.Since(start)
-		// Логирование времени шифрования
 		_ = encryptionTime
 	}()
 
@@ -22,7 +21,6 @@ func AESEncrypt(key, iv, plaintext []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Дополнение PKCS#7
 	plaintext = pkcs7Pad(plaintext, aes.BlockSize)
 
 	ciphertext := make([]byte, len(plaintext))
@@ -32,12 +30,11 @@ func AESEncrypt(key, iv, plaintext []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// AESDecrypt расшифровывает данные с использованием AES-256-CBC
+// AESDecrypt - расшифровывает данные с использованием алгоритма AES-256-CBC
 func AESDecrypt(key, iv, ciphertext []byte) ([]byte, error) {
 	start := time.Now()
 	defer func() {
 		decryptionTime := time.Since(start)
-		// Логирование времени расшифровки
 		_ = decryptionTime
 	}()
 
@@ -54,11 +51,10 @@ func AESDecrypt(key, iv, ciphertext []byte) ([]byte, error) {
 	mode := cipher.NewCBCDecrypter(block, iv)
 	mode.CryptBlocks(plaintext, ciphertext)
 
-	// Удаление дополнения PKCS#7
 	return pkcs7Unpad(plaintext)
 }
 
-// pkcs7Pad добавляет дополнение PKCS#7
+// pkcs7Pad - добавляет дополнение PKCS#7 к данным для выравнивания по блокам
 func pkcs7Pad(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize
 	padtext := make([]byte, padding)
@@ -68,7 +64,7 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 	return append(data, padtext...)
 }
 
-// pkcs7Unpad удаляет дополнение PKCS#7
+// pkcs7Unpad - удаляет дополнение PKCS#7 из расшифрованных данных
 func pkcs7Unpad(data []byte) ([]byte, error) {
 	length := len(data)
 	if length == 0 {
@@ -83,7 +79,7 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 	return data[:(length - unpadding)], nil
 }
 
-// GenerateIV генерирует случайный вектор инициализации
+// GenerateIV - генерирует случайный вектор инициализации для AES шифрования
 func GenerateIV() ([]byte, error) {
 	iv := make([]byte, aes.BlockSize)
 	if _, err := rand.Read(iv); err != nil {

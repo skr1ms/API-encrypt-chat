@@ -16,6 +16,7 @@ type UserHandler struct {
 	logger      *logger.Logger
 }
 
+// NewUserHandler - создает новый экземпляр обработчика пользователей
 func NewUserHandler(userUseCase *usecase.UserUseCase, logger *logger.Logger) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
@@ -23,10 +24,8 @@ func NewUserHandler(userUseCase *usecase.UserUseCase, logger *logger.Logger) *Us
 	}
 }
 
-// SearchUsers обрабатывает запрос на поиск пользователей
-// GET /api/users/search?q=query&limit=10
+// SearchUsers - выполняет поиск пользователей по запросу
 func (h *UserHandler) SearchUsers(c *gin.Context) {
-	// Получаем текущего пользователя из контекста (устанавливается middleware аутентификации)
 	user, exists := c.Get("user")
 	if !exists {
 		h.logger.Error("User not found in context")
@@ -46,39 +45,34 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	userID := currentUser.ID
 	h.logger.Info("Processing search request", "userID", userID)
 
-	// Получаем параметры запроса
 	query := c.Query("q")
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "MISSING_QUERY_PARAMETER"})
 		return
 	}
 
-	limit := 10 // значение по умолчанию
+	limit := 10
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 		}
 	}
-	// Создаем запрос
 	req := usecase.SearchUsersRequest{
 		Query:  query,
 		Limit:  limit,
 		UserID: userID,
 	}
 
-	// Выполняем поиск
 	result, err := h.userUseCase.SearchUsers(req)
 	if err != nil {
 		h.logger.Error("Failed to search users", "error", err.Error(), "userID", userID, "query", query)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "SEARCH_FAILED"})
 		return
 	}
-
 	c.JSON(http.StatusOK, result)
 }
 
-// GetUser получает информацию о пользователе по ID
-// GET /api/users/:id
+// GetUser - получает информацию о пользователе по ID
 func (h *UserHandler) GetUser(c *gin.Context) {
 	userIDParam := c.Param("id")
 	userID, err := strconv.ParseUint(userIDParam, 10, 32)
@@ -94,7 +88,6 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	// Возвращаем только публичную информацию
 	response := gin.H{
 		"id":               user.ID,
 		"username":         user.Username,
@@ -105,12 +98,10 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		"rsa_public_key":   user.RSAPublicKey,
 		"created_at":       user.CreatedAt,
 	}
-
 	c.JSON(http.StatusOK, response)
 }
 
-// GetOnlineUsers получает список онлайн пользователей
-// GET /api/users/online
+// GetOnlineUsers - получает список пользователей онлайн
 func (h *UserHandler) GetOnlineUsers(c *gin.Context) {
 	users, err := h.userUseCase.GetOnlineUsers()
 	if err != nil {
@@ -119,7 +110,6 @@ func (h *UserHandler) GetOnlineUsers(c *gin.Context) {
 		return
 	}
 
-	// Возвращаем только публичную информацию
 	response := make([]gin.H, 0, len(users))
 	for _, user := range users {
 		response = append(response, gin.H{

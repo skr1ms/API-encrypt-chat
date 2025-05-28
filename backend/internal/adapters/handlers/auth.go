@@ -15,6 +15,7 @@ type AuthHandler struct {
 	logger      *logger.Logger
 }
 
+// NewAuthHandler - создает новый экземпляр обработчика аутентификации
 func NewAuthHandler(authUseCase *usecase.AuthUseCase, logger *logger.Logger) *AuthHandler {
 	return &AuthHandler{
 		authUseCase: authUseCase,
@@ -22,10 +23,10 @@ func NewAuthHandler(authUseCase *usecase.AuthUseCase, logger *logger.Logger) *Au
 	}
 }
 
+// Register - обрабатывает запрос на регистрацию нового пользователя
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req usecase.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// Обработка ошибок валидации
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
 			for _, fieldError := range validationErrors {
 				switch fieldError.Tag() {
@@ -65,7 +66,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		h.logger.Errorf("Registration failed: %v", err)
 
-		// Определяем статус код на основе типа ошибки
 		statusCode := http.StatusBadRequest
 		switch err.Error() {
 		case "USERNAME_ALREADY_EXISTS":
@@ -84,6 +84,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
+// Login - обрабатывает запрос на авторизацию пользователя
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req usecase.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -95,7 +96,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		h.logger.Errorf("Login failed: %v", err)
 
-		// Все ошибки логина возвращаем как Unauthorized
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
@@ -106,6 +106,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// Logout - обрабатывает запрос на выход пользователя из системы
 func (h *AuthHandler) Logout(c *gin.Context) {
 	token, exists := c.Get("token")
 	if !exists {
@@ -123,6 +124,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
+// GetProfile - возвращает профиль текущего аутентифицированного пользователя
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -135,8 +137,8 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	})
 }
 
+// ChangePassword - обрабатывает запрос на изменение пароля пользователя
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
-	// Получаем пользователя из контекста (установлен middleware)
 	user, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
@@ -155,7 +157,6 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	if err != nil {
 		h.logger.Errorf("Change password failed: %v", err)
 
-		// Обрабатываем специфичные ошибки
 		switch err.Error() {
 		case "invalid current password":
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid current password"})

@@ -11,7 +11,6 @@ import (
 	"fmt"
 )
 
-// NotificationSender интерфейс для отправки уведомлений через WebSocket
 type NotificationSender interface {
 	SendNotificationToChat(chatID uint, notification *entities.Notification)
 }
@@ -24,6 +23,7 @@ type ChatUseCase struct {
 	notificationSender NotificationSender
 }
 
+// NewChatUseCase - создает новый экземпляр сервиса для работы с чатами
 func NewChatUseCase(
 	chatRepo repository.ChatRepository,
 	messageRepo repository.MessageRepository,
@@ -61,14 +61,13 @@ type PrivateChatResponse struct {
 	Created bool           `json:"created"`
 }
 
+// CreateChat - создает новый чат (групповой или приватный)
 func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*entities.Chat, error) {
-	// Проверяем, что создатель существует
 	creator, err := uc.userRepo.GetByID(creatorID)
 	if err != nil {
 		return nil, errors.New("creator not found")
 	}
 
-	// Создаем чат
 	chat := &entities.Chat{
 		Name:      req.Name,
 		IsGroup:   req.IsGroup,
@@ -80,12 +79,10 @@ func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*enti
 		return nil, fmt.Errorf("failed to create chat: %v", err)
 	}
 
-	// Добавляем создателя как администратора
 	if err := uc.chatRepo.AddMember(chat.ID, creatorID, "admin"); err != nil {
 		return nil, fmt.Errorf("failed to add creator to chat: %v", err)
 	}
 
-	// Добавляем остальных участников
 	for _, memberID := range req.MemberIDs {
 		if memberID != creatorID {
 			if err := uc.chatRepo.AddMember(chat.ID, memberID, "member"); err != nil {
@@ -94,7 +91,6 @@ func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*enti
 		}
 	}
 
-	// Отправляем уведомление о создании чата, если это групповой чат
 	if req.IsGroup && uc.notificationSender != nil {
 		notification := &entities.Notification{
 			Type:    "group_created",
@@ -112,22 +108,20 @@ func (uc *ChatUseCase) CreateChat(creatorID uint, req *CreateChatRequest) (*enti
 	return chat, nil
 }
 
+// GetUserChats - получает список всех чатов пользователя
 func (uc *ChatUseCase) GetUserChats(userID uint) ([]entities.Chat, error) {
 	chats, err := uc.chatRepo.GetUserChats(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Для приватных чатов нужно адаптировать название под текущего пользователя
 	for i := range chats {
 		if !chats[i].IsGroup {
-			// Получаем участников приватного чата
 			members, err := uc.chatRepo.GetMembers(chats[i].ID)
 			if err != nil {
-				continue // Пропускаем чат если не удалось получить участников
+				continue
 			}
 
-			// Находим собеседника (не текущего пользователя)
 			for _, member := range members {
 				if member.ID != userID {
 					chats[i].Name = fmt.Sprintf("Chat with %s", member.Username)
@@ -140,11 +134,10 @@ func (uc *ChatUseCase) GetUserChats(userID uint) ([]entities.Chat, error) {
 	return chats, nil
 }
 
+// CreateOrGetPrivateChat - создает новый приватный чат или возвращает существующий
 func (uc *ChatUseCase) CreateOrGetPrivateChat(userID1, userID2 uint, otherUserName string) (*PrivateChatResponse, error) {
-	// Сначала пытаемся найти существующий приватный чат
 	existingChat, err := uc.chatRepo.FindPrivateChat(userID1, userID2)
 	if err == nil {
-		// Чат найден, адаптируем его название для текущего пользователя
 		members, err := uc.chatRepo.GetMembers(existingChat.ID)
 		if err == nil {
 			for _, member := range members {
@@ -161,12 +154,11 @@ func (uc *ChatUseCase) CreateOrGetPrivateChat(userID1, userID2 uint, otherUserNa
 		}, nil
 	}
 
-	// Чат не найден, создаем новый с нейтральным названием
-	chatName := "Private Chat" // Используем нейтральное название
+	chatName := "Private Chat"
 	req := &CreateChatRequest{
 		Name:      chatName,
 		IsGroup:   false,
-		MemberIDs: []uint{userID2}, // Добавляем только второго пользователя, создатель добавится автоматически
+		MemberIDs: []uint{userID2},
 	}
 
 	newChat, err := uc.CreateChat(userID1, req)
@@ -174,7 +166,6 @@ func (uc *ChatUseCase) CreateOrGetPrivateChat(userID1, userID2 uint, otherUserNa
 		return nil, err
 	}
 
-	// Адаптируем название для создателя чата
 	newChat.Name = fmt.Sprintf("Chat with %s", otherUserName)
 
 	return &PrivateChatResponse{
@@ -183,8 +174,8 @@ func (uc *ChatUseCase) CreateOrGetPrivateChat(userID1, userID2 uint, otherUserNa
 	}, nil
 }
 
+// SendMessage - отправляет зашифрованное сообщение в чат
 func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageRequest, senderECDSAPrivateKey *ecdsa.PrivateKey, senderRSAPrivateKey *rsa.PrivateKey) (*entities.Message, error) {
-	// Проверяем, что отправитель является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, senderID)
 	if err != nil {
 		return nil, err
@@ -193,24 +184,20 @@ func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageReques
 		return nil, errors.New("sender is not a member of the chat")
 	}
 
-	// Получаем участников чата для шифрования сообщения
 	members, err := uc.chatRepo.GetMembers(chatID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chat members: %v", err)
 	}
 
-	// Получаем отправителя
 	sender, err := uc.userRepo.GetByID(senderID)
 	if err != nil {
 		return nil, errors.New("sender not found")
 	}
-	// Для простоты, будем использовать общий секрет на основе первого участника
-	// В реальном приложении нужно было бы шифровать сообщение для каждого участника отдельно
-	var sharedSecret []byte
 
-	// Только вычисляем общий секрет если есть приватный ключ отправителя
+	var sharedSecret []byte
+	var recipientID uint = senderID
+
 	if senderECDSAPrivateKey != nil && len(members) > 1 {
-		// Находим первого участника, который не является отправителем
 		var recipientPublicKey []byte
 		for _, member := range members {
 			if member.ID != senderID {
@@ -218,26 +205,24 @@ func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageReques
 				if err != nil {
 					return nil, fmt.Errorf("failed to decode recipient public key: %v", err)
 				}
+				recipientID = member.ID
 				break
 			}
 		}
 
 		if len(recipientPublicKey) > 0 {
 			sharedSecret, err = crypto.ComputeECDHSharedSecret(senderECDSAPrivateKey, recipientPublicKey)
-			err = nil
 		}
 	}
 
-	// Если общий секрет не создан, используем заглушку (не рекомендуется в продакшене)
 	if len(sharedSecret) == 0 {
-		sharedSecret = make([]byte, 64) // 32 для AES + 32 для HMAC
+		sharedSecret = make([]byte, 64)
 		copy(sharedSecret, "default-shared-secret-for-single-user-or-error")
 	}
 
-	// Создаем защищенное сообщение
 	secureMsg, err := crypto.CreateSecureMessage(
 		fmt.Sprintf("%d", senderID),
-		fmt.Sprintf("%d", chatID),
+		fmt.Sprintf("%d", recipientID),
 		[]byte(req.Content),
 		sharedSecret,
 		senderECDSAPrivateKey,
@@ -247,12 +232,12 @@ func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageReques
 		return nil, fmt.Errorf("failed to create secure message: %v", err)
 	}
 
-	// Создаем сообщение в базе данных
 	message := &entities.Message{
 		ChatID:         chatID,
 		SenderID:       senderID,
 		Content:        secureMsg.Ciphertext,
 		MessageType:    req.MessageType,
+		Timestamp:      &secureMsg.Timestamp,
 		Nonce:          secureMsg.Nonce,
 		IV:             secureMsg.IV,
 		HMAC:           secureMsg.HMAC,
@@ -268,7 +253,6 @@ func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageReques
 		return nil, fmt.Errorf("failed to save message: %v", err)
 	}
 
-	// Загружаем связанные данные
 	message.Sender = *sender
 	chat, _ := uc.chatRepo.GetByID(chatID)
 	if chat != nil {
@@ -278,8 +262,8 @@ func (uc *ChatUseCase) SendMessage(chatID, senderID uint, req *SendMessageReques
 	return message, nil
 }
 
+// GetChatMessages - получает список сообщений чата с расшифровкой для пользователя
 func (uc *ChatUseCase) GetChatMessages(chatID, userID uint, limit, offset int) ([]MessageResponse, error) {
-	// Проверяем, что пользователь является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, userID)
 	if err != nil {
 		return nil, err
@@ -292,28 +276,22 @@ func (uc *ChatUseCase) GetChatMessages(chatID, userID uint, limit, offset int) (
 	if err != nil {
 		return nil, err
 	}
-	// Получаем пользователя для расшифровки
+
 	user, err := uc.userRepo.GetByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %v", err)
 	}
-
-	fmt.Printf("DEBUG: About to decrypt %d messages for user %d\n", len(messages), userID)
 
 	var responses []MessageResponse
 	for _, msg := range messages {
 		response := MessageResponse{
 			Message: &msg,
 		}
-		// Расшифровываем сообщение
+
 		decryptedContent, err := uc.decryptMessage(&msg, user)
 		if err != nil {
-			// Если не удалось расшифровать, возвращаем оригинальный контент как есть
-			// Это может происходить для старых сообщений или при ошибках ключей
-			fmt.Printf("Failed to decrypt message %d: %v\n", msg.ID, err)
 			response.DecryptedContent = msg.Content
 		} else {
-			fmt.Printf("Successfully decrypted message %d: %s\n", msg.ID, decryptedContent)
 			response.DecryptedContent = decryptedContent
 		}
 
@@ -323,26 +301,22 @@ func (uc *ChatUseCase) GetChatMessages(chatID, userID uint, limit, offset int) (
 	return responses, nil
 }
 
-// decryptMessage расшифровывает сообщение для пользователя
+// decryptMessage - расшифровывает зашифрованное сообщение для конкретного пользователя
 func (uc *ChatUseCase) decryptMessage(msg *entities.Message, user *entities.User) (string, error) {
-	// Проверяем, есть ли зашифрованные данные
 	if msg.Content == "" || msg.IV == "" || msg.HMAC == "" {
-		return msg.Content, nil // Возвращаем как есть, если нет данных для расшифровки
+		return msg.Content, nil
 	}
 
-	// Получаем отправителя сообщения
 	sender, err := uc.userRepo.GetByID(msg.SenderID)
 	if err != nil {
 		return "", fmt.Errorf("sender not found: %v", err)
 	}
 
-	// Парсим приватный ключ пользователя
 	userECDSAPrivateKey, err := crypto.DeserializeECDSAPrivateKey([]byte(user.ECDSAPrivateKey))
 	if err != nil {
 		return "", fmt.Errorf("failed to parse user ECDSA private key: %v", err)
 	}
 
-	// Парсим публичный ключ отправителя
 	senderECDSAPublicKeyBytes, err := hex.DecodeString(sender.ECDSAPublicKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode sender ECDSA public key: %v", err)
@@ -353,15 +327,48 @@ func (uc *ChatUseCase) decryptMessage(msg *entities.Message, user *entities.User
 		return "", fmt.Errorf("failed to decode sender RSA public key: %v", err)
 	}
 
-	// Вычисляем общий секрет
-	sharedSecret, err := crypto.ComputeECDHSharedSecret(userECDSAPrivateKey, senderECDSAPublicKeyBytes)
+	members, err := uc.chatRepo.GetMembers(msg.ChatID)
 	if err != nil {
-		// Если не удалось вычислить общий секрет, используем заглушку
+		return "", fmt.Errorf("failed to get chat members: %v", err)
+	}
+
+	var sharedSecret []byte
+	if user.ID == msg.SenderID {
+		for _, member := range members {
+			if member.ID != msg.SenderID {
+				recipientPublicKeyBytes, err := hex.DecodeString(member.ECDSAPublicKey)
+				if err != nil {
+					return "", fmt.Errorf("failed to decode recipient public key: %v", err)
+				}
+				sharedSecret, err = crypto.ComputeECDHSharedSecret(userECDSAPrivateKey, recipientPublicKeyBytes)
+				break
+			}
+		}
+	} else {
+		sharedSecret, err = crypto.ComputeECDHSharedSecret(userECDSAPrivateKey, senderECDSAPublicKeyBytes)
+	}
+
+	if len(sharedSecret) == 0 {
 		sharedSecret = make([]byte, 64)
 		copy(sharedSecret, "default-shared-secret-for-single-user-or-error")
 	}
 
-	// Создаем объект SecureMessage из данных в базе
+	var recipientID uint = msg.SenderID
+
+	if len(members) > 1 {
+		for _, member := range members {
+			if member.ID != msg.SenderID {
+				recipientID = member.ID
+				break
+			}
+		}
+	}
+
+	timestamp := msg.CreatedAt.Unix()
+	if msg.Timestamp != nil {
+		timestamp = *msg.Timestamp
+	}
+
 	secureMsg := &crypto.SecureMessage{
 		Ciphertext:     msg.Content,
 		IV:             msg.IV,
@@ -369,12 +376,11 @@ func (uc *ChatUseCase) decryptMessage(msg *entities.Message, user *entities.User
 		ECDSASignature: msg.ECDSASignature,
 		RSASignature:   msg.RSASignature,
 		Nonce:          msg.Nonce,
-		Timestamp:      msg.CreatedAt.Unix(),
+		Timestamp:      timestamp,
 		SenderID:       fmt.Sprintf("%d", msg.SenderID),
-		RecipientID:    fmt.Sprintf("%d", user.ID),
+		RecipientID:    fmt.Sprintf("%d", recipientID),
 	}
 
-	// Расшифровываем сообщение
 	plaintext, err := crypto.VerifyAndDecryptMessage(secureMsg, sharedSecret, senderECDSAPublicKeyBytes, senderRSAPublicKeyBytes)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt message: %v", err)
@@ -383,8 +389,8 @@ func (uc *ChatUseCase) decryptMessage(msg *entities.Message, user *entities.User
 	return string(plaintext), nil
 }
 
+// AddMember - добавляет нового участника в чат
 func (uc *ChatUseCase) AddMember(chatID, requesterID, newMemberID uint) error {
-	// Проверяем, что requester является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, requesterID)
 	if err != nil {
 		return err
@@ -393,7 +399,6 @@ func (uc *ChatUseCase) AddMember(chatID, requesterID, newMemberID uint) error {
 		return errors.New("you are not a member of this chat")
 	}
 
-	// Проверяем, что новый пользователь ещё не является участником
 	isAlreadyMember, err := uc.chatRepo.IsMember(chatID, newMemberID)
 	if err != nil {
 		return err
@@ -402,28 +407,22 @@ func (uc *ChatUseCase) AddMember(chatID, requesterID, newMemberID uint) error {
 		return errors.New("user is already a member of this chat")
 	}
 
-	// Добавляем участника в чат
 	err = uc.chatRepo.AddMember(chatID, newMemberID, "member")
 	if err != nil {
 		return err
 	}
-	// Получаем информацию о добавленном пользователе для уведомления
+
 	newUser, err := uc.userRepo.GetByID(newMemberID)
 	if err != nil {
-		// Не возвращаем ошибку, так как пользователь уже добавлен
 		return nil
 	}
 
-	// Создаем системное сообщение в базе данных и отправляем уведомление ПОСЛЕ добавления пользователя
 	systemMessageText := fmt.Sprintf("%s присоединился к группе", newUser.Username)
 
-	// Создаем системное сообщение в базе данных
 	err = uc.createSystemMessage(chatID, systemMessageText)
 	if err != nil {
-		// Логируем ошибку, но не останавливаем процесс
 	}
 
-	// Отправляем WebSocket уведомление всем участникам чата
 	if uc.notificationSender != nil {
 		notification := &entities.Notification{
 			Type:    "user_joined",
@@ -441,9 +440,8 @@ func (uc *ChatUseCase) AddMember(chatID, requesterID, newMemberID uint) error {
 	return nil
 }
 
-// AddMemberWithUserData добавляет участника в чат и возвращает данные о добавленном пользователе
+// AddMemberWithUserData - добавляет нового участника в чат и возвращает данные пользователя
 func (uc *ChatUseCase) AddMemberWithUserData(chatID, requesterID, newMemberID uint) (*entities.User, error) {
-	// Проверяем, что requester является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, requesterID)
 	if err != nil {
 		return nil, err
@@ -452,7 +450,6 @@ func (uc *ChatUseCase) AddMemberWithUserData(chatID, requesterID, newMemberID ui
 		return nil, errors.New("you are not a member of this chat")
 	}
 
-	// Проверяем, что новый пользователь ещё не является участником
 	isAlreadyMember, err := uc.chatRepo.IsMember(chatID, newMemberID)
 	if err != nil {
 		return nil, err
@@ -461,27 +458,22 @@ func (uc *ChatUseCase) AddMemberWithUserData(chatID, requesterID, newMemberID ui
 		return nil, errors.New("user is already a member of this chat")
 	}
 
-	// Добавляем участника в чат
 	err = uc.chatRepo.AddMember(chatID, newMemberID, "member")
 	if err != nil {
 		return nil, err
 	}
-	// Получаем информацию о добавленном пользователе для уведомления
+
 	newUser, err := uc.userRepo.GetByID(newMemberID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Создаем системное сообщение в базе данных и отправляем уведомление ПОСЛЕ добавления пользователя
 	systemMessageText := fmt.Sprintf("%s присоединился к группе", newUser.Username)
 
-	// Создаем системное сообщение в базе данных
 	err = uc.createSystemMessage(chatID, systemMessageText)
 	if err != nil {
-		// Логируем ошибку, но не останавливаем процесс
 	}
 
-	// Отправляем WebSocket уведомление всем участникам чата
 	if uc.notificationSender != nil {
 		notification := &entities.Notification{
 			Type:    "user_joined",
@@ -499,8 +491,8 @@ func (uc *ChatUseCase) AddMemberWithUserData(chatID, requesterID, newMemberID ui
 	return newUser, nil
 }
 
+// RemoveMember - удаляет участника из чата (только админы и создатель)
 func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
-	// Проверяем, что оба пользователя являются участниками чата
 	isMemberActor, err := uc.chatRepo.IsMember(chatID, actorID)
 	if err != nil {
 		return err
@@ -517,13 +509,11 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 		return errors.New("target user is not a member of this chat")
 	}
 
-	// Получаем информацию о чате
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return err
 	}
 
-	// Получаем роль актора и целевого пользователя
 	actorRole, err := uc.chatRepo.GetMemberRole(chatID, actorID)
 	if err != nil {
 		return err
@@ -533,11 +523,8 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 	if err != nil {
 		return err
 	}
-	// Проверяем права на удаление:
 
-	// 1. Создатель может удалить любого
 	if chat.CreatedBy == actorID {
-		// Получаем информацию о пользователях для уведомления
 		removedUser, err := uc.userRepo.GetByID(memberID)
 		if err != nil {
 			return err
@@ -546,13 +533,11 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 		if err != nil {
 			return err
 		}
-		// Создаем системное сообщение в базе данных и отправляем уведомление ДО удаления пользователя
+
 		systemMessageText := fmt.Sprintf("%s был(а) удален(а) из группы создателем %s", removedUser.Username, actorUser.Username)
 
-		// Создаем системное сообщение в базе данных
 		err = uc.createSystemMessage(chatID, systemMessageText)
 		if err != nil {
-			// Логируем ошибку, но не останавливаем процесс
 		}
 
 		if uc.notificationSender != nil {
@@ -573,9 +558,8 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 
 		return uc.chatRepo.RemoveMember(chatID, memberID)
 	}
-	// 2. Администратор может удалить только обычных пользователей
+
 	if actorRole == "admin" && targetRole == "member" {
-		// Получаем информацию о пользователях для уведомления
 		removedUser, err := uc.userRepo.GetByID(memberID)
 		if err != nil {
 			return err
@@ -585,16 +569,12 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 			return err
 		}
 
-		// Создаем системное сообщение в базе данных и отправляем уведомление ДО удаления пользователя
 		systemMessageText := fmt.Sprintf("%s был(а) удален(а) из группы администратором %s", removedUser.Username, actorUser.Username)
 
-		// Создаем системное сообщение в базе данных
 		err = uc.createSystemMessage(chatID, systemMessageText)
 		if err != nil {
-			// Логируем ошибку, но не останавливаем процесс
 		}
 
-		// Отправляем уведомление ДО удаления пользователя
 		if uc.notificationSender != nil {
 			notification := &entities.Notification{
 				Type:    "user_removed",
@@ -614,20 +594,16 @@ func (uc *ChatUseCase) RemoveMember(chatID, actorID, memberID uint) error {
 		return uc.chatRepo.RemoveMember(chatID, memberID)
 	}
 
-	// 3. Обычный участник не может удалять других пользователей
 	if actorRole == "member" {
 		return errors.New("regular members cannot remove users")
 	}
 
-	// 4. Администратор не может удалить создателя или другого администратора
 	return errors.New("you don't have permission to remove this user")
 }
 
-// GetChatMembers возвращает список участников чата с их ролями
+// GetChatMembers - получает список всех участников чата с их ролями
 func (uc *ChatUseCase) GetChatMembers(chatID, userID uint) ([]*entities.User, error) {
-	// Специальная обработка для системных вызовов
 	if userID != 0 {
-		// Проверяем, что пользователь является участником чата
 		isMember, err := uc.chatRepo.IsMember(chatID, userID)
 		if err != nil {
 			return nil, err
@@ -638,19 +614,16 @@ func (uc *ChatUseCase) GetChatMembers(chatID, userID uint) ([]*entities.User, er
 		}
 	}
 
-	// Получаем базовую информацию о чате
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Получаем участников чата с информацией о ролях
 	members, err := uc.chatRepo.GetMembersWithRoles(chatID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Добавляем информацию о роли Creator для создателя чата
 	for i := range members {
 		if members[i].ID == chat.CreatedBy {
 			members[i].Role = "creator"
@@ -660,9 +633,8 @@ func (uc *ChatUseCase) GetChatMembers(chatID, userID uint) ([]*entities.User, er
 	return members, nil
 }
 
-// SetAdmin назначает пользователя администратором чата
+// SetAdmin - назначает пользователя администратором чата (только создатель)
 func (uc *ChatUseCase) SetAdmin(chatID, requesterID, targetUserID uint) error {
-	// Проверяем, что инициатор запроса является создателем чата
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return fmt.Errorf("failed to get chat: %v", err)
@@ -672,7 +644,6 @@ func (uc *ChatUseCase) SetAdmin(chatID, requesterID, targetUserID uint) error {
 		return errors.New("only chat creator can assign admin rights")
 	}
 
-	// Проверяем, что целевой пользователь является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, targetUserID)
 	if err != nil {
 		return err
@@ -681,24 +652,20 @@ func (uc *ChatUseCase) SetAdmin(chatID, requesterID, targetUserID uint) error {
 		return errors.New("user is not a member of this chat")
 	}
 
-	// Получаем текущую роль пользователя
 	currentRole, err := uc.chatRepo.GetMemberRole(chatID, targetUserID)
 	if err != nil {
 		return fmt.Errorf("failed to get user role: %v", err)
 	}
 
-	// Если пользователь уже администратор, ничего не делаем
 	if currentRole == "admin" {
 		return nil
 	}
 
-	// Обновляем роль пользователя
 	return uc.chatRepo.UpdateMemberRole(chatID, targetUserID, "admin")
 }
 
-// RemoveAdmin снимает права администратора с пользователя
+// RemoveAdmin - снимает права администратора с пользователя (только создатель)
 func (uc *ChatUseCase) RemoveAdmin(chatID, requesterID, targetUserID uint) error {
-	// Проверяем, что инициатор запроса является создателем чата
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return fmt.Errorf("failed to get chat: %v", err)
@@ -708,7 +675,6 @@ func (uc *ChatUseCase) RemoveAdmin(chatID, requesterID, targetUserID uint) error
 		return errors.New("only chat creator can remove admin rights")
 	}
 
-	// Проверяем, что целевой пользователь является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, targetUserID)
 	if err != nil {
 		return err
@@ -717,24 +683,20 @@ func (uc *ChatUseCase) RemoveAdmin(chatID, requesterID, targetUserID uint) error
 		return errors.New("user is not a member of this chat")
 	}
 
-	// Получаем текущую роль пользователя
 	currentRole, err := uc.chatRepo.GetMemberRole(chatID, targetUserID)
 	if err != nil {
 		return fmt.Errorf("failed to get user role: %v", err)
 	}
 
-	// Если пользователь не администратор, ничего не делаем
 	if currentRole != "admin" {
 		return nil
 	}
 
-	// Обновляем роль пользователя на обычного участника
 	return uc.chatRepo.UpdateMemberRole(chatID, targetUserID, "member")
 }
 
-// LeaveChat позволяет пользователю покинуть групповой чат
+// LeaveChat - позволяет пользователю покинуть групповой чат
 func (uc *ChatUseCase) LeaveChat(chatID, userID uint) error {
-	// Проверяем, что пользователь является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, userID)
 	if err != nil {
 		return err
@@ -743,35 +705,28 @@ func (uc *ChatUseCase) LeaveChat(chatID, userID uint) error {
 		return errors.New("you are not a member of this chat")
 	}
 
-	// Получаем информацию о чате
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return err
 	}
 
-	// Проверяем, что это групповой чат
 	if !chat.IsGroup {
 		return errors.New("you can only leave group chats")
 	}
 
-	// Создатель не может покинуть чат, он может только удалить его
 	if chat.CreatedBy == userID {
 		return errors.New("chat creator cannot leave the chat, please delete it instead")
 	}
-	// Получаем информацию о пользователе для уведомления
+
 	user, err := uc.userRepo.GetByID(userID)
 	if err != nil {
 		return err
 	}
-	// Отправляем уведомление в чат о том, что пользователь покинул группу
-	// ВАЖНО: отправляем ДО удаления пользователя из чата, чтобы все участники получили уведомление
+
 	systemMessageText := fmt.Sprintf("%s покинул(а) группу", user.Username)
 
-	// Создаем системное сообщение в базе данных
 	err = uc.createSystemMessage(chatID, systemMessageText)
 	if err != nil {
-		// Логируем ошибку, но не останавливаем процесс
-		// Пользователь все равно должен покинуть группу
 	}
 
 	if uc.notificationSender != nil {
@@ -788,7 +743,6 @@ func (uc *ChatUseCase) LeaveChat(chatID, userID uint) error {
 		uc.notificationSender.SendNotificationToChat(chatID, notification)
 	}
 
-	// Удаляем пользователя из чата
 	err = uc.chatRepo.RemoveMember(chatID, userID)
 	if err != nil {
 		return err
@@ -796,9 +750,8 @@ func (uc *ChatUseCase) LeaveChat(chatID, userID uint) error {
 	return nil
 }
 
-// DeletePrivateChat скрывает приватный чат для пользователя
+// DeletePrivateChat - удаляет приватный чат для пользователя
 func (uc *ChatUseCase) DeletePrivateChat(chatID, userID uint) error {
-	// Проверяем, что пользователь является участником чата
 	isMember, err := uc.chatRepo.IsMember(chatID, userID)
 	if err != nil {
 		return err
@@ -807,54 +760,44 @@ func (uc *ChatUseCase) DeletePrivateChat(chatID, userID uint) error {
 		return errors.New("you are not a member of this chat")
 	}
 
-	// Получаем информацию о чате
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return err
 	}
 
-	// Проверяем, что это приватный чат
 	if chat.IsGroup {
 		return errors.New("you can only delete private chats, use leave for group chats")
 	}
 
-	// Удаляем пользователя из чата (скрываем чат)
 	return uc.chatRepo.RemoveMember(chatID, userID)
 }
 
-// DeleteGroupChat полностью удаляет групповой чат (только для создателя)
+// DeleteGroupChat - полностью удаляет групповой чат (только создатель)
 func (uc *ChatUseCase) DeleteGroupChat(chatID, userID uint) error {
-	// Получаем информацию о чате
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return err
 	}
 
-	// Проверяем, что это групповой чат
 	if !chat.IsGroup {
 		return errors.New("you can only delete group chats with this method")
 	}
 
-	// Проверяем, что пользователь является создателем чата
 	if chat.CreatedBy != userID {
 		return errors.New("only chat creator can delete the group chat")
-	} // Получаем информацию о создателе для уведомления
+	}
+
 	creator, err := uc.userRepo.GetByID(userID)
 	if err != nil {
 		return err
 	}
 
-	// Создаем системное сообщение в базе данных и отправляем уведомление ДО удаления чата
 	systemMessageText := fmt.Sprintf("Группа \"%s\" была удалена создателем %s", chat.Name, creator.Username)
 
-	// Создаем системное сообщение в базе данных
 	err = uc.createSystemMessage(chatID, systemMessageText)
 	if err != nil {
-		// Логируем ошибку, но не останавливаем процесс
 	}
 
-	// Отправляем уведомление участникам группы о том, что группа была удалена
-	// ВАЖНО: отправляем ДО удаления чата, чтобы все участники получили уведомление
 	if uc.notificationSender != nil {
 		notification := &entities.Notification{
 			Type:    "group_deleted",
@@ -869,15 +812,14 @@ func (uc *ChatUseCase) DeleteGroupChat(chatID, userID uint) error {
 		uc.notificationSender.SendNotificationToChat(chatID, notification)
 	}
 
-	// Удаляем чат полностью (это также удалит все связанные записи благодаря ON DELETE CASCADE)
 	return uc.chatRepo.Delete(chatID)
 }
 
-// createSystemMessage создает системное сообщение в базе данных
+// createSystemMessage - создает системное сообщение в чате
 func (uc *ChatUseCase) createSystemMessage(chatID uint, content string) error {
 	systemMessage := &entities.Message{
 		ChatID:      chatID,
-		SenderID:    0, // 0 означает системное сообщение
+		SenderID:    0,
 		Content:     content,
 		MessageType: "system",
 	}

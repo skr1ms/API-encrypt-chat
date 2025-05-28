@@ -16,7 +16,7 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-// GenerateECDSAKeys генерирует пару ключей ECDSA
+// GenerateECDSAKeys - генерирует пару ключей ECDSA (приватный и публичный)
 func GenerateECDSAKeys() (*ecdsa.PrivateKey, []byte, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -31,7 +31,7 @@ func GenerateECDSAKeys() (*ecdsa.PrivateKey, []byte, error) {
 	return privateKey, publicKeyBytes, nil
 }
 
-// SerializeECDSAPrivateKey сериализует приватный ключ ECDSA в PEM формат
+// SerializeECDSAPrivateKey - сериализует приватный ключ ECDSA в PEM формат
 func SerializeECDSAPrivateKey(privateKey *ecdsa.PrivateKey) ([]byte, error) {
 	if privateKey == nil {
 		return nil, errors.New("private key cannot be nil")
@@ -50,7 +50,7 @@ func SerializeECDSAPrivateKey(privateKey *ecdsa.PrivateKey) ([]byte, error) {
 	return privateKeyPEM, nil
 }
 
-// DeserializeECDSAPrivateKey десериализует приватный ключ ECDSA из PEM формата
+// DeserializeECDSAPrivateKey - десериализует приватный ключ ECDSA из PEM формата
 func DeserializeECDSAPrivateKey(privateKeyPEM []byte) (*ecdsa.PrivateKey, error) {
 	if len(privateKeyPEM) == 0 {
 		return nil, errors.New("private key PEM cannot be empty")
@@ -69,7 +69,7 @@ func DeserializeECDSAPrivateKey(privateKeyPEM []byte) (*ecdsa.PrivateKey, error)
 	return privateKey, nil
 }
 
-// SignECDSA создает цифровую подпись ECDSA
+// SignECDSA - создает цифровую подпись данных с использованием ECDSA
 func SignECDSA(privateKey *ecdsa.PrivateKey, data []byte) ([]byte, error) {
 	if privateKey == nil {
 		return nil, errors.New("private key cannot be nil")
@@ -78,7 +78,6 @@ func SignECDSA(privateKey *ecdsa.PrivateKey, data []byte) ([]byte, error) {
 	start := time.Now()
 	defer func() {
 		signingTime := time.Since(start)
-		// Логирование времени подписи
 		_ = signingTime
 	}()
 
@@ -93,12 +92,11 @@ func SignECDSA(privateKey *ecdsa.PrivateKey, data []byte) ([]byte, error) {
 	return signature, nil
 }
 
-// VerifyECDSA проверяет цифровую подпись ECDSA
+// VerifyECDSA - проверяет цифровую подпись ECDSA
 func VerifyECDSA(publicKeyBytes, data, signature []byte) (bool, error) {
 	start := time.Now()
 	defer func() {
 		verificationTime := time.Since(start)
-		// Логирование времени проверки
 		_ = verificationTime
 	}()
 
@@ -112,7 +110,7 @@ func VerifyECDSA(publicKeyBytes, data, signature []byte) (bool, error) {
 		return false, errors.New("invalid public key type")
 	}
 
-	if len(signature) != 64 { // 32 байта для r + 32 байта для s
+	if len(signature) != 64 {
 		return false, errors.New("invalid signature length")
 	}
 
@@ -123,7 +121,7 @@ func VerifyECDSA(publicKeyBytes, data, signature []byte) (bool, error) {
 	return ecdsa.Verify(publicKey, hash[:], r, s), nil
 }
 
-// ComputeECDHSharedSecret вычисляет общий секрет ECDH
+// ComputeECDHSharedSecret - вычисляет общий секретный ключ с использованием ECDH
 func ComputeECDHSharedSecret(privateKey *ecdsa.PrivateKey, peerPublicKeyBytes []byte) ([]byte, error) {
 	if privateKey == nil {
 		return nil, errors.New("private key cannot be nil")
@@ -152,11 +150,10 @@ func ComputeECDHSharedSecret(privateKey *ecdsa.PrivateKey, peerPublicKeyBytes []
 		return nil, errors.New("ECDH computation failed")
 	}
 
-	// Use HKDF to expand the shared secret to 64 bytes (32 for AES + 32 for HMAC)
 	hash := sha256.Sum256(x.Bytes())
 	hkdf := hkdf.New(sha256.New, hash[:], nil, []byte("crypto-chat-shared-secret"))
 
-	expandedKey := make([]byte, 64) // 32 bytes for AES + 32 bytes for HMAC
+	expandedKey := make([]byte, 64)
 	if _, err := io.ReadFull(hkdf, expandedKey); err != nil {
 		return nil, fmt.Errorf("failed to expand shared secret: %v", err)
 	}

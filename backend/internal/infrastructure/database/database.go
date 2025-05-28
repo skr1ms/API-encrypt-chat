@@ -14,6 +14,7 @@ type Database struct {
 	*gorm.DB
 }
 
+// New - создает новое подключение к базе данных PostgreSQL
 func New(cfg *config.DatabaseConfig) (*Database, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
@@ -26,6 +27,7 @@ func New(cfg *config.DatabaseConfig) (*Database, error) {
 	return &Database{db}, nil
 }
 
+// Migrate - выполняет автоматическую миграцию всех сущностей базы данных
 func (db *Database) Migrate() error {
 	return db.AutoMigrate(
 		&entities.User{},
@@ -37,6 +39,7 @@ func (db *Database) Migrate() error {
 	)
 }
 
+// Close - закрывает подключение к базе данных
 func (db *Database) Close() error {
 	sqlDB, err := db.DB.DB()
 	if err != nil {

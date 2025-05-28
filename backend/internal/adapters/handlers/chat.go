@@ -20,6 +20,7 @@ type ChatHandler struct {
 	logger      *logger.Logger
 }
 
+// NewChatHandler - создает новый экземпляр обработчика чатов
 func NewChatHandler(chatUseCase *usecase.ChatUseCase, wsHub *websocket.Hub, logger *logger.Logger) *ChatHandler {
 	return &ChatHandler{
 		chatUseCase: chatUseCase,
@@ -28,6 +29,7 @@ func NewChatHandler(chatUseCase *usecase.ChatUseCase, wsHub *websocket.Hub, logg
 	}
 }
 
+// CreateChat - создает новый чат
 func (h *ChatHandler) CreateChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -40,20 +42,18 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	chat, err := h.chatUseCase.CreateChat(user.(*entities.User).ID, &req)
 	if err != nil {
-		h.logger.Errorf("Failed to create chat: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Chat created successfully",
-		"data":    chat,
-	})
+		"data":    chat})
 }
 
+// GetUserChats - получает список чатов пользователя
 func (h *ChatHandler) GetUserChats(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -69,10 +69,10 @@ func (h *ChatHandler) GetUserChats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data": chats,
-	})
+		"data": chats})
 }
 
+// GetChatMessages - получает сообщения чата с постраничной навигацией
 func (h *ChatHandler) GetChatMessages(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -105,15 +105,14 @@ func (h *ChatHandler) GetChatMessages(c *gin.Context) {
 		return
 	}
 
-	// Преобразуем ответ для отправки расшифрованного контента как основного
 	responseMessages := make([]map[string]interface{}, len(messages))
 	for i, msg := range messages {
 		responseMessages[i] = map[string]interface{}{
 			"id":                msg.Message.ID,
 			"chat_id":           msg.Message.ChatID,
 			"sender_id":         msg.Message.SenderID,
-			"content":           msg.DecryptedContent, // Используем расшифрованный контент как основной
-			"decrypted_content": msg.DecryptedContent, // Дублируем для обратной совместимости
+			"content":           msg.DecryptedContent,
+			"decrypted_content": msg.DecryptedContent,
 			"message_type":      msg.Message.MessageType,
 			"created_at":        msg.Message.CreatedAt,
 			"updated_at":        msg.Message.UpdatedAt,
@@ -127,10 +126,10 @@ func (h *ChatHandler) GetChatMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data": responseMessages,
-	})
+		"data": responseMessages})
 }
 
+// SendMessage - отправляет сообщение в чат с криптографической защитой
 func (h *ChatHandler) SendMessage(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -150,8 +149,6 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// Получаем приватные ключи пользователя из базы данных
-	// ВНИМАНИЕ: В продакшене приватные ключи должны храниться только на клиенте!
 	currentUser := user.(*entities.User)
 
 	var ecdsaPrivateKey *ecdsa.PrivateKey
@@ -162,7 +159,6 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		ecdsaPrivateKey, err = crypto.DeserializeECDSAPrivateKey([]byte(currentUser.ECDSAPrivateKey))
 		if err != nil {
 			h.logger.Errorf("Failed to deserialize ECDSA private key: %v", err)
-			// Продолжаем с nil ключом
 		}
 	}
 
@@ -171,7 +167,6 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		rsaPrivateKey, err = crypto.DeserializeRSAPrivateKey([]byte(currentUser.RSAPrivateKey))
 		if err != nil {
 			h.logger.Errorf("Failed to deserialize RSA private key: %v", err)
-			// Продолжаем с nil ключом
 		}
 	}
 
@@ -181,7 +176,6 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Отправляем сообщение через WebSocket с расшифрованным контентом
 	wsMessage := websocket.WSMessage{
 		Type:   websocket.MessageTypeChat,
 		ChatID: uint(chatID),
@@ -190,7 +184,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 			ID:             message.ID,
 			ChatID:         message.ChatID,
 			SenderID:       message.SenderID,
-			Content:        req.Content, // Отправляем оригинальный нешифрованный контент
+			Content:        req.Content,
 			MessageType:    message.MessageType,
 			Nonce:          message.Nonce,
 			IV:             message.IV,
@@ -202,13 +196,12 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 	h.wsHub.SendToChat(uint(chatID), wsMessage, user.(*entities.User).ID)
 
-	// Возвращаем сообщение с расшифрованным контентом
 	responseMessage := map[string]interface{}{
 		"id":                message.ID,
 		"chat_id":           message.ChatID,
 		"sender_id":         message.SenderID,
-		"content":           req.Content, // Возвращаем оригинальный нешифрованный контент
-		"decrypted_content": req.Content, // Для обратной совместимости
+		"content":           req.Content,
+		"decrypted_content": req.Content,
 		"message_type":      message.MessageType,
 		"created_at":        message.CreatedAt,
 		"updated_at":        message.UpdatedAt,
@@ -217,10 +210,10 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Message sent successfully",
-		"data":    responseMessage,
-	})
+		"data":    responseMessage})
 }
 
+// AddMember - добавляет участника в групповой чат
 func (h *ChatHandler) AddMember(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -250,8 +243,7 @@ func (h *ChatHandler) AddMember(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Member added successfully",
-		"data": gin.H{
+		"message": "Member added successfully", "data": gin.H{
 			"user": gin.H{
 				"id":        addedUser.ID,
 				"username":  addedUser.Username,
@@ -263,6 +255,7 @@ func (h *ChatHandler) AddMember(c *gin.Context) {
 	})
 }
 
+// RemoveMember - удаляет участника из группового чата
 func (h *ChatHandler) RemoveMember(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -283,7 +276,6 @@ func (h *ChatHandler) RemoveMember(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
-
 	err = h.chatUseCase.RemoveMember(uint(chatID), user.(*entities.User).ID, uint(userIDToRemove))
 	if err != nil {
 		h.logger.Errorf("Failed to remove member: %v", err)
@@ -293,6 +285,7 @@ func (h *ChatHandler) RemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed successfully"})
 }
 
+// CreateOrGetPrivateChat - создает новый приватный чат или возвращает существующий
 func (h *ChatHandler) CreateOrGetPrivateChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -325,10 +318,10 @@ func (h *ChatHandler) CreateOrGetPrivateChat(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Private chat ready",
-		"data":    chat,
-	})
+		"data":    chat})
 }
 
+// GetChatMembers - получает список участников чата
 func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -351,11 +344,10 @@ func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data": members,
-	})
+		"data": members})
 }
 
-// SetAdmin назначает пользователя администратором чата
+// SetAdmin - назначает пользователя администратором чата
 func (h *ChatHandler) SetAdmin(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -383,11 +375,10 @@ func (h *ChatHandler) SetAdmin(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "User is now an admin"})
 }
 
-// RemoveAdmin снимает права администратора с пользователя
+// RemoveAdmin - снимает административные права с пользователя
 func (h *ChatHandler) RemoveAdmin(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -415,11 +406,10 @@ func (h *ChatHandler) RemoveAdmin(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Admin rights removed"})
 }
 
-// LeaveChat позволяет пользователю покинуть групповой чат
+// LeaveChat - позволяет пользователю покинуть чат
 func (h *ChatHandler) LeaveChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -440,11 +430,10 @@ func (h *ChatHandler) LeaveChat(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully left the chat"})
 }
 
-// DeleteChat удаляет приватный чат для пользователя
+// DeleteChat - удаляет приватный чат
 func (h *ChatHandler) DeleteChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -465,11 +454,10 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Chat deleted successfully"})
 }
 
-// DeleteGroupChat полностью удаляет групповой чат (только для создателя)
+// DeleteGroupChat - удаляет групповой чат
 func (h *ChatHandler) DeleteGroupChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {

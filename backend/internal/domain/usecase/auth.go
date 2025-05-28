@@ -20,6 +20,7 @@ type AuthUseCase struct {
 	jwtSecret   string
 }
 
+// NewAuthUseCase - создает новый экземпляр сервиса аутентификации
 func NewAuthUseCase(userRepo repository.UserRepository, sessionRepo repository.SessionRepository, jwtSecret string) *AuthUseCase {
 	return &AuthUseCase{
 		userRepo:    userRepo,
@@ -56,8 +57,8 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"newPassword" binding:"required,min=6"`
 }
 
+// Register - регистрирует нового пользователя в системе
 func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
-	// Проверяем, существует ли пользователь
 	existingUser, _ := uc.userRepo.GetByUsername(req.Username)
 	if existingUser != nil {
 		return nil, errors.New("USERNAME_ALREADY_EXISTS")
@@ -68,13 +69,11 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 		return nil, errors.New("EMAIL_ALREADY_EXISTS")
 	}
 
-	// Хэшируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %v", err)
 	}
 
-	// Генерируем ключевые пары
 	ecdsaPriv, ecdsaPub, err := crypto.GenerateECDSAKeys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ECDSA keys: %v", err)
@@ -84,8 +83,6 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 		return nil, fmt.Errorf("failed to generate RSA keys: %v", err)
 	}
 
-	// Сериализуем приватные ключи для сохранения в базе данных
-	// ВНИМАНИЕ: Это небезопасно в продакшене! Приватные ключи должны храниться только на клиенте
 	ecdsaPrivateKeyPEM, err := crypto.SerializeECDSAPrivateKey(ecdsaPriv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize ECDSA private key: %v", err)
@@ -96,15 +93,14 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 		return nil, fmt.Errorf("failed to serialize RSA private key: %v", err)
 	}
 
-	// Создаем пользователя
 	user := &entities.User{
 		Username:        req.Username,
 		Email:           req.Email,
 		PasswordHash:    string(hashedPassword),
 		ECDSAPublicKey:  hex.EncodeToString(ecdsaPub),
 		RSAPublicKey:    hex.EncodeToString(rsaPub),
-		ECDSAPrivateKey: string(ecdsaPrivateKeyPEM), // НЕБЕЗОПАСНО в продакшене!
-		RSAPrivateKey:   string(rsaPrivateKeyPEM),   // НЕБЕЗОПАСНО в продакшене!
+		ECDSAPrivateKey: string(ecdsaPrivateKeyPEM),
+		RSAPrivateKey:   string(rsaPrivateKeyPEM),
 		IsOnline:        false,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
@@ -114,13 +110,11 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 		return nil, fmt.Errorf("failed to create user: %v", err)
 	}
 
-	// Создаем токен
 	token, expiresAt, err := uc.generateJWT(user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %v", err)
 	}
 
-	// Создаем сессию
 	session := &entities.Session{
 		UserID:       user.ID,
 		Token:        token,
@@ -133,7 +127,6 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 		return nil, fmt.Errorf("failed to create session: %v", err)
 	}
 
-	// Сохраняем приватные ключи в возвращаемых данных (в реальном приложении следует передавать их клиенту безопасно)
 	_ = ecdsaPriv
 	_ = rsaPriv
 
@@ -144,25 +137,22 @@ func (uc *AuthUseCase) Register(req *RegisterRequest) (*AuthResponse, error) {
 	}, nil
 }
 
+// Login - выполняет аутентификацию пользователя в системе
 func (uc *AuthUseCase) Login(req *LoginRequest) (*AuthResponse, error) {
-	// Находим пользователя по username
 	user, err := uc.userRepo.GetByUsername(req.Username)
 	if err != nil {
 		return nil, errors.New("INVALID_CREDENTIALS")
 	}
 
-	// Проверяем пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, errors.New("INVALID_CREDENTIALS")
 	}
 
-	// Создаем токен
 	token, expiresAt, err := uc.generateJWT(user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %v", err)
 	}
 
-	// Создаем сессию
 	session := &entities.Session{
 		UserID:       user.ID,
 		Token:        token,
@@ -175,9 +165,7 @@ func (uc *AuthUseCase) Login(req *LoginRequest) (*AuthResponse, error) {
 		return nil, fmt.Errorf("failed to create session: %v", err)
 	}
 
-	// Обновляем статус онлайн
 	if err := uc.userRepo.UpdateOnlineStatus(user.ID, true); err != nil {
-		// Логируем ошибку, но не прерываем процесс
 		fmt.Printf("Failed to update online status: %v\n", err)
 	}
 
@@ -188,13 +176,13 @@ func (uc *AuthUseCase) Login(req *LoginRequest) (*AuthResponse, error) {
 	}, nil
 }
 
+// Logout - выполняет выход пользователя из системы
 func (uc *AuthUseCase) Logout(token string) error {
 	session, err := uc.sessionRepo.GetByToken(token)
 	if err != nil {
 		return err
 	}
 
-	// Обновляем статус офлайн
 	if err := uc.userRepo.UpdateOnlineStatus(session.UserID, false); err != nil {
 		fmt.Printf("Failed to update online status: %v\n", err)
 	}
@@ -202,8 +190,8 @@ func (uc *AuthUseCase) Logout(token string) error {
 	return uc.sessionRepo.Delete(token)
 }
 
+// ValidateToken - проверяет валидность JWT токена и возвращает данные пользователя
 func (uc *AuthUseCase) ValidateToken(tokenString string) (*entities.User, error) {
-	// Парсим JWT токен
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -218,7 +206,6 @@ func (uc *AuthUseCase) ValidateToken(tokenString string) (*entities.User, error)
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID := uint(claims["user_id"].(float64))
 
-		// Проверяем сессию
 		session, err := uc.sessionRepo.GetByToken(tokenString)
 		if err != nil {
 			return nil, errors.New("session not found")
@@ -228,7 +215,6 @@ func (uc *AuthUseCase) ValidateToken(tokenString string) (*entities.User, error)
 			return nil, errors.New("token expired")
 		}
 
-		// Обновляем последнюю активность
 		uc.sessionRepo.UpdateActivity(tokenString, time.Now())
 
 		return uc.userRepo.GetByID(userID)
@@ -237,6 +223,7 @@ func (uc *AuthUseCase) ValidateToken(tokenString string) (*entities.User, error)
 	return nil, errors.New("invalid token")
 }
 
+// generateJWT - генерирует JWT токен для пользователя
 func (uc *AuthUseCase) generateJWT(userID uint) (string, time.Time, error) {
 	expiresAt := time.Now().Add(24 * time.Hour)
 
@@ -257,29 +244,24 @@ func (uc *AuthUseCase) generateJWT(userID uint) (string, time.Time, error) {
 }
 
 func (uc *AuthUseCase) ChangePassword(userID uint, req *ChangePasswordRequest) error {
-	// Получаем пользователя
 	user, err := uc.userRepo.GetByID(userID)
 	if err != nil {
 		return errors.New("user not found")
 	}
 
-	// Проверяем текущий пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
 		return errors.New("invalid current password")
 	}
 
-	// Проверяем, что новый пароль отличается от старого
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.NewPassword)); err == nil {
 		return errors.New("new password must be different from current password")
 	}
 
-	// Хэшируем новый пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %v", err)
 	}
 
-	// Обновляем пароль в базе данных
 	if err := uc.userRepo.UpdatePassword(userID, string(hashedPassword)); err != nil {
 		return fmt.Errorf("failed to update password: %v", err)
 	}

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/shared/ui/label';
 import { loginStart, loginSuccess, loginFailure } from '@/shared/store/slices/authSlice';
 import { chatAPI } from '@/shared/api/chatApi';
@@ -154,10 +155,9 @@ export const LoginForm = () => {
       
       <div>
         <Label htmlFor="password">Пароль</Label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           value={formData.password}
           onChange={handleInputChange}
           required

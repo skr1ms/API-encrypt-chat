@@ -7,24 +7,27 @@ import (
 	"crypto/subtle"
 )
 
-// GenerateHMAC создает HMAC-SHA256 для данных
+// GenerateHMAC - создает HMAC-SHA256 хеш для переданных данных
 func GenerateHMAC(key, data []byte) []byte {
 	mac := hmac.New(sha256.New, key)
 	mac.Write(data)
-	return mac.Sum(nil)
+	result := mac.Sum(nil)
+
+	return result
 }
 
-// VerifyHMAC проверяет HMAC-SHA256 в постоянное время
+// VerifyHMAC - проверяет соответствие HMAC-SHA256 в постоянное время
 func VerifyHMAC(key, data, expectedMAC []byte) bool {
 	mac := hmac.New(sha256.New, key)
 	mac.Write(data)
 	expectedSignature := mac.Sum(nil)
 
-	// Сравнение в постоянное время для защиты от timing attacks
-	return subtle.ConstantTimeCompare(expectedMAC, expectedSignature) == 1
+	result := subtle.ConstantTimeCompare(expectedMAC, expectedSignature) == 1
+
+	return result
 }
 
-// GenerateNonce создает случайный nonce
+// GenerateNonce - создает случайный nonce указанного размера
 func GenerateNonce(size int) ([]byte, error) {
 	nonce := make([]byte, size)
 	if _, err := rand.Read(nonce); err != nil {

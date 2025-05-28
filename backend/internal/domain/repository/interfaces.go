@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// UserRepository интерфейс для работы с пользователями
 type UserRepository interface {
 	Create(user *entities.User) error
 	GetByID(id uint) (*entities.User, error)
@@ -19,7 +18,6 @@ type UserRepository interface {
 	SearchUsers(query string, excludeUserID uint, limit int) ([]entities.User, error)
 }
 
-// ChatRepository интерфейс для работы с чатами
 type ChatRepository interface {
 	Create(chat *entities.Chat) error
 	GetByID(id uint) (*entities.Chat, error)
@@ -36,7 +34,6 @@ type ChatRepository interface {
 	GetMemberRole(chatID, userID uint) (string, error)
 }
 
-// MessageRepository интерфейс для работы с сообщениями
 type MessageRepository interface {
 	Create(message *entities.Message) error
 	GetByID(id uint) (*entities.Message, error)
@@ -46,7 +43,6 @@ type MessageRepository interface {
 	GetUserMessages(userID uint, limit, offset int) ([]entities.Message, error)
 }
 
-// KeyExchangeRepository интерфейс для работы с обменом ключами
 type KeyExchangeRepository interface {
 	Create(keyExchange *entities.KeyExchange) error
 	GetByID(id uint) (*entities.KeyExchange, error)
@@ -56,7 +52,6 @@ type KeyExchangeRepository interface {
 	GetPendingExchanges(userID uint) ([]entities.KeyExchange, error)
 }
 
-// SessionRepository интерфейс для работы с сессиями
 type SessionRepository interface {
 	Create(session *entities.Session) error
 	GetByToken(token string) (*entities.Session, error)
@@ -67,7 +62,6 @@ type SessionRepository interface {
 	UpdateActivity(token string, lastActivity time.Time) error
 }
 
-// Repository объединяет все репозитории
 type Repository struct {
 	User        UserRepository
 	Chat        ChatRepository

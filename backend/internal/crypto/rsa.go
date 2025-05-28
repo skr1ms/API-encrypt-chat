@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// GenerateRSAKeys генерирует пару ключей RSA
+// GenerateRSAKeys - генерирует пару ключей RSA (приватный и публичный)
 func GenerateRSAKeys() (*rsa.PrivateKey, []byte, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -26,7 +26,7 @@ func GenerateRSAKeys() (*rsa.PrivateKey, []byte, error) {
 	return privateKey, publicKeyBytes, nil
 }
 
-// SerializeRSAPrivateKey сериализует приватный ключ RSA в PEM формат
+// SerializeRSAPrivateKey - сериализует приватный ключ RSA в PEM формат
 func SerializeRSAPrivateKey(privateKey *rsa.PrivateKey) ([]byte, error) {
 	if privateKey == nil {
 		return nil, errors.New("private key cannot be nil")
@@ -41,7 +41,7 @@ func SerializeRSAPrivateKey(privateKey *rsa.PrivateKey) ([]byte, error) {
 	return privateKeyPEM, nil
 }
 
-// DeserializeRSAPrivateKey десериализует приватный ключ RSA из PEM формата
+// DeserializeRSAPrivateKey - десериализует приватный ключ RSA из PEM формата
 func DeserializeRSAPrivateKey(privateKeyPEM []byte) (*rsa.PrivateKey, error) {
 	if len(privateKeyPEM) == 0 {
 		return nil, errors.New("private key PEM cannot be empty")
@@ -60,11 +60,10 @@ func DeserializeRSAPrivateKey(privateKeyPEM []byte) (*rsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
-// SignRSA создает цифровую подпись RSA
+// SignRSA - создает цифровую подпись данных с использованием RSA
 func SignRSA(privateKey *rsa.PrivateKey, data []byte) ([]byte, error) {
-	// Проверка на nil для безопасности
 	if privateKey == nil {
-		return make([]byte, 0), nil // Возвращаем пустую подпись вместо ошибки
+		return make([]byte, 0), nil 
 	}
 
 	start := time.Now()
@@ -83,12 +82,11 @@ func SignRSA(privateKey *rsa.PrivateKey, data []byte) ([]byte, error) {
 	return signature, nil
 }
 
-// VerifyRSA проверяет цифровую подпись RSA
+// VerifyRSA - проверяет цифровую подпись RSA
 func VerifyRSA(publicKeyBytes, data, signature []byte) (bool, error) {
 	start := time.Now()
 	defer func() {
 		verificationTime := time.Since(start)
-		// Логирование времени проверки
 		_ = verificationTime
 	}()
 

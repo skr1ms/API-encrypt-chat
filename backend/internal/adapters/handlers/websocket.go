@@ -14,6 +14,7 @@ type WebSocketHandler struct {
 	logger *logger.Logger
 }
 
+// NewWebSocketHandler - создает новый экземпляр обработчика WebSocket соединений
 func NewWebSocketHandler(hub *websocket.Hub, logger *logger.Logger) *WebSocketHandler {
 	return &WebSocketHandler{
 		hub:    hub,
@@ -21,6 +22,7 @@ func NewWebSocketHandler(hub *websocket.Hub, logger *logger.Logger) *WebSocketHa
 	}
 }
 
+// HandleWebSocket - обрабатывает подключение к WebSocket для авторизованного пользователя
 func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {

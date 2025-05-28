@@ -22,12 +22,8 @@ export const useUserSearch = (): UseUserSearchReturn => {
     }
 
     setIsLoading(true);
-    setError(null);
-
-    try {
-      console.log('Searching for users with query:', query);
+    setError(null);    try {
       const response: SearchUsersResponse = await userAPI.searchUsers(query.trim(), 10);
-      console.log('Search response:', response);
       setUsers(response.users);
     } catch (err) {
       console.error('Search error:', err);
