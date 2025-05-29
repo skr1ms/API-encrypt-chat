@@ -30,6 +30,17 @@ func NewChatHandler(chatUseCase *usecase.ChatUseCase, wsHub *websocket.Hub, logg
 }
 
 // CreateChat - создает новый чат
+// CreateChat godoc
+// @Summary      Create new group chat
+// @Description  Creates a new chat with the given name and members
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        chat  body  map[string]interface{}  true  "Chat name and members"
+// @Success      201   {object}  models.Chat
+// @Failure      400   {object}  gin.H
+// @Router       /chats [post]
 func (h *ChatHandler) CreateChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -54,6 +65,14 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 }
 
 // GetUserChats - получает список чатов пользователя
+// GetUserChats godoc
+// @Summary      Get user chats
+// @Description  Returns all chats the authenticated user is a member of
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   models.Chat
+// @Router       /chats [get]
 func (h *ChatHandler) GetUserChats(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -73,6 +92,15 @@ func (h *ChatHandler) GetUserChats(c *gin.Context) {
 }
 
 // GetChatMessages - получает сообщения чата с постраничной навигацией
+// GetChatMessages godoc
+// @Summary      Get chat messages
+// @Description  Returns all messages from a specific chat
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        chat_id  path  string  true  "Chat ID"
+// @Success      200      {array}  models.Message
+// @Router       /chats/{chat_id}/messages [get]
 func (h *ChatHandler) GetChatMessages(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -130,6 +158,17 @@ func (h *ChatHandler) GetChatMessages(c *gin.Context) {
 }
 
 // SendMessage - отправляет сообщение в чат с криптографической защитой
+// SendMessage godoc
+// @Summary      Send message
+// @Description  Sends a message to a specific chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        message  body  models.Message  true  "Message content"
+// @Success      201      {object}  models.Message
+// @Failure      400      {object}  gin.H
+// @Router       /chats/{chat_id}/messages [get]
 func (h *ChatHandler) SendMessage(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -214,6 +253,17 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 }
 
 // AddMember - добавляет участника в групповой чат
+// AddMember godoc
+// @Summary      Add member to chat
+// @Description  Adds a user to a group chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID and username"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/members [post]
 func (h *ChatHandler) AddMember(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -256,6 +306,17 @@ func (h *ChatHandler) AddMember(c *gin.Context) {
 }
 
 // RemoveMember - удаляет участника из группового чата
+// RemoveMember godoc
+// @Summary      Remove member from chat
+// @Description  Removes a user from a group chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID and username"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/members/:userId [delete]
 func (h *ChatHandler) RemoveMember(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -286,6 +347,17 @@ func (h *ChatHandler) RemoveMember(c *gin.Context) {
 }
 
 // CreateOrGetPrivateChat - создает новый приватный чат или возвращает существующий
+// CreateOrGetPrivateChat godoc
+// @Summary      Create or get private chat
+// @Description  Returns existing private chat or creates new one between two users
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        user  body  map[string]string  true  "Username of the other user"
+// @Success      200   {object}  models.Chat
+// @Failure      400   {object}  gin.H
+// @Router       /chats/private [post]
 func (h *ChatHandler) CreateOrGetPrivateChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -322,6 +394,15 @@ func (h *ChatHandler) CreateOrGetPrivateChat(c *gin.Context) {
 }
 
 // GetChatMembers - получает список участников чата
+// GetChatMembers godoc
+// @Summary      Get chat members
+// @Description  Returns a list of members in the chat
+// @Tags         chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        chat_id  query  string  true  "Chat ID"
+// @Success      200      {array}  string
+// @Router       /chats/:id/members [get]
 func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -348,6 +429,17 @@ func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 }
 
 // SetAdmin - назначает пользователя администратором чата
+// SetAdmin godoc
+// @Summary      Set user as admin
+// @Description  Promotes a user to admin in the chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID and username"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/members/:userId/admin [put]
 func (h *ChatHandler) SetAdmin(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -379,6 +471,17 @@ func (h *ChatHandler) SetAdmin(c *gin.Context) {
 }
 
 // RemoveAdmin - снимает административные права с пользователя
+// RemoveAdmin godoc
+// @Summary      Remove user as admin
+// @Description  Demotes a user from admin role in the chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID and username"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/members/:userId/admin [delete]
 func (h *ChatHandler) RemoveAdmin(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -410,6 +513,17 @@ func (h *ChatHandler) RemoveAdmin(c *gin.Context) {
 }
 
 // LeaveChat - позволяет пользователю покинуть чат
+// LeaveChat godoc
+// @Summary      Leave chat
+// @Description  Authenticated user leaves the chat
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/leave [post]
 func (h *ChatHandler) LeaveChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -434,6 +548,17 @@ func (h *ChatHandler) LeaveChat(c *gin.Context) {
 }
 
 // DeleteChat - удаляет приватный чат
+// DeleteChat godoc
+// @Summary      Delete chat
+// @Description  Deletes chat if user has permission
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id [delete]
 func (h *ChatHandler) DeleteChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -458,6 +583,17 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 }
 
 // DeleteGroupChat - удаляет групповой чат
+// DeleteGroupChat godoc
+// @Summary      Delete group chat
+// @Description  Deletes a group chat and all its messages
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        data  body  map[string]string  true  "Chat ID"
+// @Success      200   {object}  gin.H
+// @Failure      400   {object}  gin.H
+// @Router       /chats/:id/delete [delete]
 func (h *ChatHandler) DeleteGroupChat(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {

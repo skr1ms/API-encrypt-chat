@@ -25,6 +25,16 @@ func NewUserHandler(userUseCase *usecase.UserUseCase, logger *logger.Logger) *Us
 }
 
 // SearchUsers - выполняет поиск пользователей по запросу
+// SearchUsers godoc
+// @Summary      Search users
+// @Description  Returns a list of users matching the search query
+// @Tags         users
+// @Produce      json
+// @Security     BearerAuth
+// @Param        query  query  string  true  "Search query"
+// @Success      200    {array}  string
+// @Failure      400    {object}  gin.H
+// @Router       /users/search [get]
 func (h *UserHandler) SearchUsers(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -73,6 +83,16 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 }
 
 // GetUser - получает информацию о пользователе по ID
+// GetUser godoc
+// @Summary      Get user by username
+// @Description  Returns information about a specific user
+// @Tags         users
+// @Produce      json
+// @Security     BearerAuth
+// @Param        username  path  string  true  "Username"
+// @Success      200       {object}  models.User
+// @Failure      404       {object}  gin.H
+// @Router       /users/:id [get]
 func (h *UserHandler) GetUser(c *gin.Context) {
 	userIDParam := c.Param("id")
 	userID, err := strconv.ParseUint(userIDParam, 10, 32)
@@ -102,6 +122,14 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 }
 
 // GetOnlineUsers - получает список пользователей онлайн
+// GetOnlineUsers godoc
+// @Summary      Get online users
+// @Description  Returns a list of currently online users
+// @Tags         users
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}  string
+// @Router       /users/online [get]
 func (h *UserHandler) GetOnlineUsers(c *gin.Context) {
 	users, err := h.userUseCase.GetOnlineUsers()
 	if err != nil {
