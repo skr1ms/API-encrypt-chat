@@ -1,16 +1,293 @@
-basePath: /
-host: localhost:8080
+openapi: 3.0.0
 info:
-  contact: {}
-  description: SleekChat backend with authentication and messaging
   title: SleekChat API
-  version: "1.0"
-paths: {}
-schemes:
-- http
-securityDefinitions:
-  BearerAuth:
-    in: header
-    name: Authorization
-    type: apiKey
-swagger: "2.0"
+  version: '1.0'
+  description: SleekChat backend with authentication and messaging
+servers:
+- url: http://localhost:8080
+paths:
+  /auth/register:
+    post:
+      tags:
+      - auth
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+  /auth/login:
+    post:
+      tags:
+      - auth
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+  /auth/logout:
+    post:
+      tags:
+      - auth
+      summary: User logout
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out
+  /auth/profile:
+    get:
+      tags:
+      - auth
+      summary: Get user profile
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+  /auth/change-password:
+    post:
+      tags:
+      - auth
+      summary: Change user password
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                old_password:
+                  type: string
+                new_password:
+                  type: string
+      responses:
+        '200':
+          description: Password changed
+        '400':
+          description: Bad Request
+  /users/search:
+    get:
+      tags:
+      - users
+      summary: Search users
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: query
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /users/{username}:
+    get:
+      tags:
+      - users
+      summary: Get user by username
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: username
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: Not found
+  /users/online:
+    get:
+      tags:
+      - users
+      summary: Get online users
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: List of online users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /chat/create:
+    post:
+      tags:
+      - chat
+      summary: Create a new chat
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                members:
+                  type: array
+                  items:
+                    type: string
+                isGroup:
+                  type: boolean
+      responses:
+        '200':
+          description: Chat created
+  /chat/user:
+    get:
+      tags:
+      - chat
+      summary: Get user chats
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: List of chats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Chat'
+  /chat/messages/{chatId}:
+    get:
+      tags:
+      - chat
+      summary: Get chat messages
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: chatId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+  /chat/send:
+    post:
+      tags:
+      - chat
+      summary: Send message
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+                content:
+                  type: string
+      responses:
+        '200':
+          description: Message sent
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        isOnline:
+          type: boolean
+    Message:
+      type: object
+      properties:
+        sender:
+          type: string
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    Chat:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        members:
+          type: array
+          items:
+            type: string
+        isGroup:
+          type: boolean
+security:
+- BearerAuth: []
+tags:
+- name: auth
+  description: Authentication endpoints
+- name: chat
+  description: Chat management
+- name: users
+  description: User endpoints
