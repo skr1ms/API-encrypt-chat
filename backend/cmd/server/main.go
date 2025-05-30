@@ -14,9 +14,8 @@ import (
 	"sleek-chat-backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/swaggo/gin-swagger"
-    "github.com/swaggo/files"
-    "sleek-chat-backend/cmd/server/docs"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // @title SleekChat API
