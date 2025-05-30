@@ -7,6 +7,7 @@
 ### Backend
 - Go (Gin)
 - PostgreSQL
+- GORM
 - WebSockets
 - JWT аутентификация
 - Криптография: 
