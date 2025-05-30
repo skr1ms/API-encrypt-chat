@@ -52,15 +52,6 @@
 start-https.bat
 ```
 
-#### HTTP версия (для разработки)
-```bash
-# На Linux/Mac
-./start.sh
-
-# На Windows
-start.bat
-```
-
 #### Управление контейнерами
 
 **Остановка приложения:**
@@ -86,9 +77,6 @@ status.bat
 ```bash
 # HTTPS версия
 docker-compose up --build -d
-
-# HTTP версия (для разработки)
-docker-compose -f docker-compose.dev.yml up --build -d
 ```
 
 ### Доступ к приложению
