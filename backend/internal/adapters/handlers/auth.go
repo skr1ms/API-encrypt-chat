@@ -24,6 +24,17 @@ func NewAuthHandler(authUseCase *usecase.AuthUseCase, logger *logger.Logger) *Au
 }
 
 // Register - обрабатывает запрос на регистрацию нового пользователя
+// Register godoc
+// @Summary      Register a new user
+// @Description  Creates a new user with a username and password
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        user  body      models.User  true  "User credentials"
+// @Success      201   {object}  models.User
+// @Failure      400   {object}  gin.H
+// @Failure      500   {object}  gin.H
+// @Router       /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req usecase.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -85,6 +96,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // Login - обрабатывает запрос на авторизацию пользователя
+// Login godoc
+// @Summary      Authenticate user
+// @Description  Logs in a user and returns a JWT token
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        credentials  body      models.User  true  "User credentials"
+// @Success      200          {object}  map[string]string  "JWT Token"
+// @Failure      400          {object}  gin.H
+// @Failure      401          {object}  gin.H
+// @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req usecase.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,6 +129,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 // Logout - обрабатывает запрос на выход пользователя из системы
+// Logout godoc
+// @Summary      Log out a user
+// @Description  Invalidates the user's session or token
+// @Tags         auth
+// @Produce      json
+// @Success      200  {object}  gin.H  "Logged out successfully"
+// @Router       /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	token, exists := c.Get("token")
 	if !exists {
@@ -125,6 +154,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 // GetProfile - возвращает профиль текущего аутентифицированного пользователя
+// @Summary      Get user profile
+// @Description  Returns the profile of the authenticated user
+// @Tags         auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  models.User
+// @Failure      401  {object}  gin.H
+// @Router       /auth/profile [get]
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -138,6 +175,19 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 }
 
 // ChangePassword - обрабатывает запрос на изменение пароля пользователя
+// ChangePassword godoc
+// @Summary      Change user password
+// @Description  Allows the authenticated user to change their password
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        passwords  body  map[string]string  true  "Current and new password"
+// @Success      200        {object}  gin.H
+// @Failure      400        {object}  gin.H
+// @Failure      401        {object}  gin.H
+// @Failure      500        {object}  gin.H
+// @Router       /auth/change-password [post]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {

@@ -14,8 +14,21 @@ import (
 	"sleek-chat-backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swaggo/gin-swagger"
+    "github.com/swaggo/files"
+    "sleek-chat-backend/cmd/server/docs"
 )
 
+// @title SleekChat API
+// @version 1.0
+// @description SleekChat backend with authentication and messaging
+// @host localhost:8080
+// @BasePath /
+// @schemes http
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	cfg := config.Load()
 
@@ -67,6 +80,9 @@ func main() {
 	// Добавляем middleware для шифрования (применяется ко всем маршрутам)
 	router.Use(encryptionMiddleware.DecryptRequest())
 	router.Use(encryptionMiddleware.EncryptResponse())
+
+	// Swagger UI
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
